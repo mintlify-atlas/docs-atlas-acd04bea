@@ -1,0 +1,612 @@
+---
+title: Security Best Practices
+description: Implement production-ready security measures with django-allauth
+---
+
+## Overview
+
+Django-allauth is designed to be secure by default, but proper configuration is essential for production deployments. This guide covers critical security settings, common vulnerabilities, and best practices.
+
+## Rate Limiting
+
+Rate limiting is **critical** for preventing brute force attacks and abuse.
+
+### Enable Rate Limiting
+
+<Warning>
+Rate limiting requires a proper cache backend. The default `DummyCache` will NOT work.
+</Warning>
+
+```python settings.py
+# Configure a real cache backend
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+    }
+}
+
+# Rate limits are enabled by default
+ACCOUNT_RATE_LIMITS = {
+    'login': '30/m/ip',              # 30 login attempts per minute per IP
+    'login_failed': '10/m/ip,5/5m/key',  # 10 failed attempts per minute per IP,
+                                          # 5 per 5 minutes per username
+    'signup': '20/m/ip',              # 20 signups per minute per IP
+    'reset_password': '20/m/ip,5/m/key',  # 20 per minute per IP,
+                                           # 5 per minute per email
+    'confirm_email': '1/3m/key',      # 1 confirmation per 3 minutes per email
+    'change_password': '5/m/user',    # 5 changes per minute per user
+    'manage_email': '10/m/user',      # 10 email changes per minute per user
+}
+```
+
+### Rate Limit Format
+
+```
+"amount/period/scope[,amount/period/scope]"
+```
+
+- **amount**: Number of allowed actions
+- **period**: Time window (`s`=seconds, `m`=minutes, `h`=hours, `d`=days)
+- **scope**: `ip` (IP address), `user` (authenticated user), or `key` (action-specific identifier)
+
+### Custom Rate Limit Handler
+
+Customize the rate limit error response:
+
+```python views.py
+from django.shortcuts import render
+
+def handler429(request, exception=None):
+    """Custom rate limit exceeded page."""
+    return render(request, '429.html', status=429)
+```
+
+```python urls.py
+handler429 = 'myapp.views.handler429'
+```
+
+```html templates/429.html
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Too Many Requests</title>
+</head>
+<body>
+    <h1>Slow Down!</h1>
+    <p>You've made too many requests. Please wait a moment and try again.</p>
+    <p>If you believe this is an error, please contact support.</p>
+</body>
+</html>
+```
+
+## Client IP Detection
+
+<Warning>
+**Critical**: Rate limiting relies on accurate IP detection. Misconfiguration allows attackers to bypass rate limits entirely.
+</Warning>
+
+### Behind a Proxy/Load Balancer
+
+```python settings.py
+# Number of proxies you trust (e.g., 1 for single load balancer)
+ALLAUTH_TRUSTED_PROXY_COUNT = 1
+
+# Or specify a custom header from your proxy
+ALLAUTH_TRUSTED_CLIENT_IP_HEADER = 'CF-Connecting-IP'  # Cloudflare
+# ALLAUTH_TRUSTED_CLIENT_IP_HEADER = 'X-Real-IP'  # nginx
+```
+
+### Custom IP Detection
+
+For complex proxy setups:
+
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def get_client_ip(self, request):
+        """Extract real client IP from request."""
+        # Example: Cloudflare setup
+        cf_ip = request.META.get('HTTP_CF_CONNECTING_IP')
+        if cf_ip:
+            return cf_ip
+        
+        # Example: Custom load balancer header
+        lb_ip = request.META.get('HTTP_X_FORWARDED_FOR')
+        if lb_ip:
+            # Take the first IP (client)
+            return lb_ip.split(',')[0].strip()
+        
+        # Fallback to remote address
+        return request.META.get('REMOTE_ADDR')
+```
+
+```python settings.py
+ACCOUNT_ADAPTER = 'myapp.adapters.MyAccountAdapter'
+```
+
+## Enumeration Prevention
+
+Prevent attackers from discovering which email addresses have accounts.
+
+```python settings.py
+# Enable enumeration prevention (default: True)
+ACCOUNT_PREVENT_ENUMERATION = True
+
+# Strict mode allows duplicate signups to prevent leaking info
+# ACCOUNT_PREVENT_ENUMERATION = "strict"
+```
+
+### How It Works
+
+- **Password Reset**: Always shows "email sent" message, even if account doesn't exist
+- **Signup**: With `"strict"`, allows signup with existing email (only one can be verified)
+- **Login**: Returns generic error for both invalid username and password
+
+<Note>
+Enumeration prevention adds slight UX friction (no immediate feedback) but significantly improves security.
+</Note>
+
+## Password Security
+
+### Password Validation
+
+Use Django's password validators:
+
+```python settings.py
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 12,  # Require 12+ characters
+        }
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
+```
+
+### Custom Password Validation
+
+```python validators.py
+from django.core.exceptions import ValidationError
+from django.utils.translation import gettext as _
+import re
+
+class ComplexityValidator:
+    """Require uppercase, lowercase, digit, and special character."""
+    
+    def validate(self, password, user=None):
+        if not re.search(r'[A-Z]', password):
+            raise ValidationError(
+                _("Password must contain at least one uppercase letter."),
+                code='password_no_upper',
+            )
+        if not re.search(r'[a-z]', password):
+            raise ValidationError(
+                _("Password must contain at least one lowercase letter."),
+                code='password_no_lower',
+            )
+        if not re.search(r'\d', password):
+            raise ValidationError(
+                _("Password must contain at least one digit."),
+                code='password_no_digit',
+            )
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
+            raise ValidationError(
+                _("Password must contain at least one special character."),
+                code='password_no_special',
+            )
+    
+    def get_help_text(self):
+        return _("Your password must contain uppercase, lowercase, digits, and special characters.")
+```
+
+```python settings.py
+AUTH_PASSWORD_VALIDATORS = [
+    # ... other validators ...
+    {
+        'NAME': 'myapp.validators.ComplexityValidator',
+    },
+]
+```
+
+### Logout on Password Change
+
+```python settings.py
+# Log out all sessions when password is changed
+ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = True
+```
+
+## Email Verification
+
+### Mandatory Verification
+
+```python settings.py
+# Require email verification before login
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+
+# Or make it optional
+# ACCOUNT_EMAIL_VERIFICATION = 'optional'
+
+# Or disable entirely (not recommended)
+# ACCOUNT_EMAIL_VERIFICATION = 'none'
+```
+
+### Verification Code Instead of Link
+
+```python settings.py
+# Use code-based verification (more secure for some use cases)
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS = 3
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT = 900  # 15 minutes
+```
+
+### Token Expiration
+
+```python settings.py
+# Email confirmation link expiration (days)
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
+
+# Use HMAC-based tokens (no database storage)
+ACCOUNT_EMAIL_CONFIRMATION_HMAC = True
+```
+
+## Session Security
+
+### Session Settings
+
+```python settings.py
+# Session cookie settings
+SESSION_COOKIE_SECURE = True  # HTTPS only (set False for development)
+SESSION_COOKIE_HTTPONLY = True  # Prevent JavaScript access
+SESSION_COOKIE_SAMESITE = 'Lax'  # CSRF protection
+SESSION_COOKIE_AGE = 1209600  # 2 weeks in seconds
+
+# CSRF cookie settings
+CSRF_COOKIE_SECURE = True  # HTTPS only
+CSRF_COOKIE_HTTPONLY = True
+CSRF_COOKIE_SAMESITE = 'Lax'
+```
+
+### Remember Me Functionality
+
+```python settings.py
+# Control session persistence
+ACCOUNT_SESSION_REMEMBER = None  # Ask user (show "Remember me" checkbox)
+# ACCOUNT_SESSION_REMEMBER = True   # Always remember
+# ACCOUNT_SESSION_REMEMBER = False  # Never remember (session cookie)
+```
+
+### Track User Sessions
+
+```python settings.py
+INSTALLED_APPS = [
+    # ...
+    'allauth.usersessions',
+]
+
+MIDDLEWARE = [
+    # ...
+    'allauth.usersessions.middleware.UserSessionsMiddleware',
+]
+
+USERSESSIONS_TRACK_ACTIVITY = True
+```
+
+This allows users to:
+- View all active sessions
+- See device/location information
+- Terminate specific sessions
+- Detect unauthorized access
+
+## Reauthentication
+
+Require password confirmation for sensitive actions:
+
+```python settings.py
+# Require reauthentication for account changes
+ACCOUNT_REAUTHENTICATION_REQUIRED = True
+
+# How long recent authentication is valid (seconds)
+ACCOUNT_REAUTHENTICATION_TIMEOUT = 300  # 5 minutes
+```
+
+## HTTPS Enforcement
+
+```python settings.py
+# Redirect all HTTP to HTTPS
+SECURE_SSL_REDIRECT = True
+
+# HSTS (HTTP Strict Transport Security)
+SECURE_HSTS_SECONDS = 31536000  # 1 year
+SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+SECURE_HSTS_PRELOAD = True
+
+# Secure proxy header (if behind reverse proxy)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+```
+
+## Login Security
+
+### Login by Code (Passwordless)
+
+```python settings.py
+# Enable magic link/code login
+ACCOUNT_LOGIN_BY_CODE_ENABLED = True
+ACCOUNT_LOGIN_BY_CODE_MAX_ATTEMPTS = 3
+ACCOUNT_LOGIN_BY_CODE_TIMEOUT = 180  # 3 minutes
+```
+
+### Login Timeout
+
+```python settings.py
+# Maximum time for login flow completion
+ACCOUNT_LOGIN_TIMEOUT = 900  # 15 minutes
+```
+
+### Logout Security
+
+```python settings.py
+# Prevent logout via GET (require POST)
+ACCOUNT_LOGOUT_ON_GET = False  # Recommended
+```
+
+## Email Security
+
+### Email Notifications
+
+```python settings.py
+# Send security notifications
+ACCOUNT_EMAIL_NOTIFICATIONS = True
+```
+
+Enables notifications for:
+- Password changes
+- Email address changes
+- New logins from unknown devices (if using usersessions)
+
+### Email Validation
+
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+from django.core.exceptions import ValidationError
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def clean_email(self, email):
+        """Validate email addresses."""
+        email = super().clean_email(email)
+        
+        # Block disposable email domains
+        disposable_domains = [
+            'tempmail.com',
+            'guerrillamail.com',
+            '10minutemail.com',
+            # ... add more
+        ]
+        domain = email.split('@')[1].lower()
+        if domain in disposable_domains:
+            raise ValidationError(
+                "Email addresses from disposable email services are not allowed."
+            )
+        
+        # Block specific patterns
+        if '+' in email.split('@')[0]:
+            # Optionally block plus addressing
+            pass
+        
+        return email
+```
+
+## Username Security
+
+### Username Validation
+
+```python settings.py
+# Block problematic usernames
+ACCOUNT_USERNAME_BLACKLIST = [
+    'admin',
+    'administrator',
+    'root',
+    'system',
+    'support',
+    'help',
+    # ... add more
+]
+
+# Minimum username length
+ACCOUNT_USERNAME_MIN_LENGTH = 3
+
+# Custom validators
+from django.contrib.auth.validators import ASCIIUsernameValidator
+
+ACCOUNT_USERNAME_VALIDATORS = 'myapp.validators.custom_username_validators'
+```
+
+```python validators.py
+from django.contrib.auth.validators import UnicodeUsernameValidator
+from django.core.validators import RegexValidator
+
+custom_username_validators = [
+    RegexValidator(
+        r'^[a-zA-Z0-9_-]+$',
+        'Username can only contain letters, numbers, underscores, and hyphens.'
+    ),
+]
+```
+
+### Case Sensitivity
+
+```python settings.py
+# Store usernames in lowercase (better performance, prevents duplicates)
+ACCOUNT_PRESERVE_USERNAME_CASING = False
+```
+
+## Signup Security
+
+### Honeypot Field
+
+```python settings.py
+# Add hidden field to catch bots
+ACCOUNT_SIGNUP_FORM_HONEYPOT_FIELD = 'phone_number'
+```
+
+### Close Signup
+
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def is_open_for_signup(self, request):
+        """Control signup availability."""
+        # Example: Invitation-only signups
+        return 'invitation_code' in request.session
+        
+        # Example: Close signups entirely
+        # return False
+        
+        # Example: Time-based signups
+        # from django.utils import timezone
+        # return timezone.now().hour >= 9 and timezone.now().hour < 17
+```
+
+## Admin Protection
+
+<Warning>
+Django-allauth rate limiting does NOT protect the Django admin login. Protect it separately.
+</Warning>
+
+```python settings.py
+# Use django-axes for admin protection
+INSTALLED_APPS = [
+    'axes',  # Must be before django.contrib.admin
+    'django.contrib.admin',
+    # ...
+]
+
+MIDDLEWARE = [
+    # ...
+    'axes.middleware.AxesMiddleware',
+]
+
+AUTHENTICATION_BACKENDS = [
+    'axes.backends.AxesBackend',  # Must be first
+    'django.contrib.auth.backends.ModelBackend',
+]
+
+# Axes configuration
+AXES_FAILURE_LIMIT = 5
+AXES_COOLOFF_TIME = 1  # hours
+AXES_LOCK_OUT_BY_COMBINATION_USER_AND_IP = True
+```
+
+## Security Monitoring
+
+### Log Security Events
+
+```python settings.py
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'security_file': {
+            'level': 'WARNING',
+            'class': 'logging.FileHandler',
+            'filename': '/var/log/myapp/security.log',
+        },
+    },
+    'loggers': {
+        'allauth': {
+            'handlers': ['security_file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+```
+
+### Monitor Failed Logins
+
+```python signals.py
+from django.contrib.auth.signals import user_login_failed
+from django.dispatch import receiver
+import logging
+
+logger = logging.getLogger('security')
+
+@receiver(user_login_failed)
+def log_failed_login(sender, credentials, request, **kwargs):
+    logger.warning(
+        f"Failed login attempt: "
+        f"username={credentials.get('username', 'N/A')}, "
+        f"ip={request.META.get('REMOTE_ADDR')}, "
+        f"user_agent={request.META.get('HTTP_USER_AGENT')}"
+    )
+```
+
+## Production Checklist
+
+```python settings.py
+# ✅ Security Settings Checklist
+
+# Debug
+DEBUG = False
+ALLOWED_HOSTS = ['yourdomain.com']
+
+# HTTPS
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+SECURE_HSTS_SECONDS = 31536000
+
+# Cookies
+SESSION_COOKIE_HTTPONLY = True
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# Rate Limiting
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+    }
+}
+
+# Allauth Security
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'
+ACCOUNT_PREVENT_ENUMERATION = True
+ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = True
+ACCOUNT_EMAIL_NOTIFICATIONS = True
+ACCOUNT_LOGOUT_ON_GET = False
+ACCOUNT_REAUTHENTICATION_REQUIRED = True
+
+# IP Detection
+ALLAUTH_TRUSTED_PROXY_COUNT = 1  # Or appropriate for your setup
+
+# Passwords
+AUTH_PASSWORD_VALIDATORS = [...]  # Strong validators
+```
+
+## Additional Recommendations
+
+1. **Keep Dependencies Updated**: Regularly update django-allauth and Django
+2. **Use Security Headers**: Add `django-csp`, `django-permissions-policy`
+3. **Enable 2FA**: Install `django-allauth-2fa` for two-factor authentication
+4. **Monitor Logs**: Set up alerts for suspicious activity
+5. **Regular Security Audits**: Use tools like `safety` and `bandit`
+6. **Penetration Testing**: Test your implementation before going live
+7. **Backup Strategy**: Regular backups of user data and sessions
+
+With these security measures in place, your django-allauth implementation will be production-ready and resilient against common attacks.

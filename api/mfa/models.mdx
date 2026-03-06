@@ -1,0 +1,369 @@
+---
+title: MFA Models
+description: Database models for multi-factor authentication in django-allauth
+---
+
+## Overview
+
+The MFA models provide the database layer for storing multi-factor authentication data, including TOTP secrets, WebAuthn credentials, and recovery codes.
+
+## Models
+
+### Authenticator
+
+**Source:** `allauth/mfa/models.py:22`
+
+The main model for storing MFA authenticators associated with user accounts.
+
+#### Fields
+
+- **user** (`ForeignKey`) - Reference to the user model
+- **type** (`CharField`) - Type of authenticator (see `Authenticator.Type`)
+- **data** (`JSONField`) - Authenticator-specific data (secrets, credentials, etc.)
+- **created_at** (`DateTimeField`) - Timestamp when authenticator was created
+- **last_used_at** (`DateTimeField`) - Timestamp of last use (nullable)
+
+#### Type Choices
+
+**Source:** `allauth/mfa/models.py:23`
+
+```python
+class Type(models.TextChoices):
+    RECOVERY_CODES = "recovery_codes", _("Recovery codes")
+    TOTP = "totp", _("TOTP Authenticator")
+    WEBAUTHN = "webauthn", _("WebAuthn")
+```
+
+#### Methods
+
+##### `wrap()`
+
+**Source:** `allauth/mfa/models.py:55`
+
+Wraps the authenticator instance in a type-specific wrapper class.
+
+**Returns:** Type-specific wrapper instance (`TOTP`, `RecoveryCodes`, or `WebAuthn`)
+
+```python
+authenticator = Authenticator.objects.get(user=user, type=Authenticator.Type.TOTP)
+totp = authenticator.wrap()  # Returns TOTP instance
+valid = totp.validate_code("123456")
+```
+
+##### `record_usage()`
+
+**Source:** `allauth/mfa/models.py:66`
+
+Records when the authenticator was last used by updating `last_used_at`.
+
+```python
+authenticator.record_usage()
+```
+
+#### Constraints
+
+The model enforces a unique constraint ensuring users can only have one TOTP authenticator and one recovery codes authenticator. Multiple WebAuthn authenticators are allowed.
+
+**Source:** `allauth/mfa/models.py:37`
+
+```python
+constraints = [
+    UniqueConstraint(
+        fields=["user", "type"],
+        name="unique_authenticator_type",
+        condition=Q(type__in=("totp", "recovery_codes"))
+    )
+]
+```
+
+## Wrapper Classes
+
+The `Authenticator` model stores generic data, but each type has a specialized wrapper class that provides type-specific functionality.
+
+### TOTP
+
+**Source:** `allauth/mfa/totp/internal/auth.py:78`
+
+Wrapper for Time-based One-Time Password authenticators.
+
+#### Class Methods
+
+##### `activate(user, secret)`
+
+**Source:** `allauth/mfa/totp/internal/auth.py:83`
+
+Creates and saves a new TOTP authenticator for a user.
+
+**Parameters:**
+- `user` - User instance
+- `secret` (`str`) - Base32-encoded TOTP secret
+
+**Returns:** `TOTP` instance
+
+```python
+from allauth.mfa.totp.internal.auth import TOTP, generate_totp_secret
+
+secret = generate_totp_secret()
+totp = TOTP.activate(user, secret)
+```
+
+#### Instance Methods
+
+##### `validate_code(code)`
+
+**Source:** `allauth/mfa/totp/internal/auth.py:90`
+
+Validates a TOTP code, checking against the current time window and preventing replay attacks.
+
+**Parameters:**
+- `code` (`str`) - The TOTP code to validate
+
+**Returns:** `bool` - True if code is valid
+
+```python
+if totp.validate_code("123456"):
+    # Code is valid
+    authenticator.record_usage()
+```
+
+### RecoveryCodes
+
+**Source:** `allauth/mfa/recovery_codes/internal/auth.py:11`
+
+Wrapper for recovery code authenticators.
+
+#### Class Methods
+
+##### `activate(user)`
+
+**Source:** `allauth/mfa/recovery_codes/internal/auth.py:16`
+
+Creates or retrieves recovery codes authenticator for a user.
+
+**Parameters:**
+- `user` - User instance
+
+**Returns:** `RecoveryCodes` instance
+
+```python
+from allauth.mfa.recovery_codes.internal.auth import RecoveryCodes
+
+rc = RecoveryCodes.activate(user)
+codes = rc.generate_codes()
+```
+
+##### `generate_seed()`
+
+**Source:** `allauth/mfa/recovery_codes/internal/auth.py:34`
+
+Generates a random seed for recovery code generation.
+
+**Returns:** `str` - 80-character hex string
+
+#### Instance Methods
+
+##### `generate_codes()`
+
+**Source:** `allauth/mfa/recovery_codes/internal/auth.py:44`
+
+Generates all recovery codes from the stored seed.
+
+**Returns:** `List[str]` - List of recovery codes
+
+```python
+codes = rc.generate_codes()
+# Returns: ['12345678', '87654321', ...]
+```
+
+##### `get_unused_codes()`
+
+**Source:** `allauth/mfa/recovery_codes/internal/auth.py:73`
+
+Returns only the codes that haven't been used yet.
+
+**Returns:** `List[str]` - List of unused recovery codes
+
+```python
+unused = rc.get_unused_codes()
+print(f"You have {len(unused)} recovery codes remaining")
+```
+
+##### `validate_code(code)`
+
+**Source:** `allauth/mfa/recovery_codes/internal/auth.py:101`
+
+Validates a recovery code and marks it as used.
+
+**Parameters:**
+- `code` (`str`) - Recovery code to validate
+
+**Returns:** `bool` - True if code is valid and unused
+
+```python
+if rc.validate_code("12345678"):
+    authenticator.record_usage()
+```
+
+### WebAuthn
+
+**Source:** `allauth/mfa/webauthn/internal/auth.py:180`
+
+Wrapper for WebAuthn/FIDO2 authenticators (security keys, biometrics).
+
+#### Class Methods
+
+##### `add(user, name, credential)`
+
+**Source:** `allauth/mfa/webauthn/internal/auth.py:185`
+
+Creates a new WebAuthn authenticator.
+
+**Parameters:**
+- `user` - User instance
+- `name` (`str`) - User-friendly name for the authenticator
+- `credential` (`dict`) - Credential data from registration ceremony
+
+**Returns:** `WebAuthn` instance
+
+```python
+from allauth.mfa.webauthn.internal.auth import WebAuthn
+
+webauthn = WebAuthn.add(
+    user=user,
+    name="YubiKey 5C",
+    credential=credential_dict
+)
+```
+
+#### Properties
+
+##### `name`
+
+**Source:** `allauth/mfa/webauthn/internal/auth.py:198`
+
+Gets or sets the user-friendly name of the authenticator.
+
+```python
+print(webauthn.name)  # "YubiKey 5C"
+webauthn.name = "Backup YubiKey"
+```
+
+##### `authenticator_data`
+
+**Source:** `allauth/mfa/webauthn/internal/auth.py:206`
+
+Returns the parsed `AuthenticatorData` from the credential.
+
+**Returns:** `fido2.webauthn.AuthenticatorData`
+
+##### `is_passwordless`
+
+**Source:** `allauth/mfa/webauthn/internal/auth.py:212`
+
+Checks if this is a passwordless/resident key credential.
+
+**Returns:** `Optional[bool]` - True if passwordless, False if not, None if unknown
+
+```python
+if webauthn.is_passwordless:
+    print("This authenticator supports passwordless login")
+```
+
+## Manager
+
+### AuthenticatorManager
+
+**Source:** `allauth/mfa/models.py:18`
+
+The default manager for `Authenticator` model. Currently provides standard Django manager functionality.
+
+```python
+# Get all TOTP authenticators
+totp_auths = Authenticator.objects.filter(type=Authenticator.Type.TOTP)
+
+# Get all authenticators for a user
+user_auths = Authenticator.objects.filter(user=user)
+```
+
+## Usage Examples
+
+### Checking if User Has MFA Enabled
+
+```python
+from allauth.mfa.models import Authenticator
+
+has_mfa = Authenticator.objects.filter(
+    user=user,
+    type__in=[Authenticator.Type.TOTP, Authenticator.Type.WEBAUTHN]
+).exists()
+```
+
+### Getting All WebAuthn Keys
+
+```python
+webauthn_keys = Authenticator.objects.filter(
+    user=user,
+    type=Authenticator.Type.WEBAUTHN
+)
+
+for auth in webauthn_keys:
+    webauthn = auth.wrap()
+    print(f"Key: {webauthn.name}, Passwordless: {webauthn.is_passwordless}")
+```
+
+### Validating TOTP Code
+
+```python
+try:
+    authenticator = Authenticator.objects.get(
+        user=user,
+        type=Authenticator.Type.TOTP
+    )
+    totp = authenticator.wrap()
+    if totp.validate_code(request.POST.get('code')):
+        authenticator.record_usage()
+        # Login successful
+    else:
+        # Invalid code
+except Authenticator.DoesNotExist:
+    # User doesn't have TOTP enabled
+```
+
+## Data Structure
+
+### TOTP Data Format
+
+```python
+{
+    "secret": "<encrypted-base32-secret>"
+}
+```
+
+### Recovery Codes Data Format
+
+```python
+{
+    "seed": "<encrypted-hex-seed>",
+    "used_mask": 0  # Bitmask of used codes
+}
+```
+
+### WebAuthn Data Format
+
+```python
+{
+    "name": "YubiKey 5C",
+    "credential": {
+        "id": "<credential-id>",
+        "rawId": "<raw-credential-id>",
+        "response": {
+            "attestationObject": "<base64-data>",
+            "clientDataJSON": "<base64-data>"
+        },
+        "type": "public-key",
+        "clientExtensionResults": {
+            "credProps": {"rk": true}
+        }
+    }
+}
+```

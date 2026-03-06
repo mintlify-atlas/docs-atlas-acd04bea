@@ -1,0 +1,680 @@
+---
+title: Templates
+description: Customize the look and feel of django-allauth pages
+---
+
+django-allauth provides a flexible template system that allows you to customize the look and feel of all authentication pages. You can either completely override templates or use the element-based styling system for quick customization.
+
+## Overview
+
+The built-in templates are intentionally plain and unstyled. django-allauth doesn't make assumptions about your frontend framework, allowing you to use Bootstrap, Tailwind, Material UI, or any other styling approach.
+
+There are two main approaches to customizing templates:
+
+1. **Element-based styling** - Override layout and element templates for quick visual changes
+2. **Full template override** - Copy and customize individual templates for complete control
+
+## Template Configuration
+
+### Django Template Settings
+
+django-allauth templates are discovered via Django's template loader. Ensure your `TEMPLATES` setting is configured correctly:
+
+```python
+# settings.py
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [
+            BASE_DIR / "templates",  # Your project templates
+        ],
+        "APP_DIRS": True,  # Required for allauth templates
+        "OPTIONS": {
+            "context_processors": [
+                "django.template.context_processors.debug",
+                "django.template.context_processors.request",
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+            ],
+        },
+    },
+]
+```
+
+### Template Extension
+
+**Setting:** `ACCOUNT_TEMPLATE_EXTENSION`  
+**Default:** `"html"`  
+**Source:** `allauth/account/app_settings.py:457`
+
+Change the template file extension:
+
+```python
+ACCOUNT_TEMPLATE_EXTENSION = "jinja"
+```
+
+## Element-Based Styling
+
+The fastest way to customize appearance is by overriding layout and element templates. This approach lets you style all pages by modifying just a few files.
+
+### Template Structure
+
+```
+Your Project Templates/
+├── allauth/
+│   ├── layouts/
+│   │   ├── base.html          # Overall base template
+│   │   ├── entrance.html      # Login/signup pages
+│   │   └── manage.html        # Account management pages
+│   └── elements/
+│       ├── button.html
+│       ├── form.html
+│       ├── h1.html
+│       └── ... (other elements)
+├── account/
+│   └── (optional full overrides)
+└── socialaccount/
+    └── (optional full overrides)
+```
+
+### Layout Templates
+
+#### allauth/layouts/base.html
+
+The overall base template for all allauth pages.
+
+```django
+<!-- templates/allauth/layouts/base.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block head_title %}{% endblock %}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/">MyApp</a>
+        </div>
+    </nav>
+    
+    <main>
+        {% block content %}
+        {% endblock %}
+    </main>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+```
+
+#### allauth/layouts/entrance.html
+
+Layout for authentication pages (login, signup, password reset).
+
+```django
+<!-- templates/allauth/layouts/entrance.html -->
+{% extends "allauth/layouts/base.html" %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow-sm">
+                <div class="card-body p-5">
+                    {% if messages %}
+                        {% for message in messages %}
+                            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                    
+                    {% block inner %}
+                    {% endblock %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+```
+
+#### allauth/layouts/manage.html
+
+Layout for account management pages (change password, manage emails).
+
+```django
+<!-- templates/allauth/layouts/manage.html -->
+{% extends "allauth/layouts/base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-3">
+            <div class="list-group">
+                <a href="{% url 'account_email' %}" class="list-group-item list-group-item-action">
+                    Email Addresses
+                </a>
+                <a href="{% url 'account_change_password' %}" class="list-group-item list-group-item-action">
+                    Change Password
+                </a>
+                <a href="{% url 'socialaccount_connections' %}" class="list-group-item list-group-item-action">
+                    Social Accounts
+                </a>
+            </div>
+        </div>
+        <div class="col-md-9">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+            
+            {% block inner %}
+            {% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+```
+
+### Element Templates
+
+Elements are reusable components used across templates. Override them to apply consistent styling.
+
+#### allauth/elements/button.html
+
+```django
+<!-- templates/allauth/elements/button.html -->
+{% load allauth %}
+<button type="{{ attrs.type|default:'submit' }}" 
+        class="btn btn-{{ attrs.color|default:'primary' }} {{ attrs.class }}">
+    {% slot %}{% endslot %}
+</button>
+```
+
+#### allauth/elements/form.html
+
+```django
+<!-- templates/allauth/elements/form.html -->
+{% load allauth %}
+<form method="{{ attrs.method }}" action="{{ attrs.action }}" class="{{ attrs.class }}">
+    {% csrf_token %}
+    {% slot body %}
+    {% endslot %}
+    
+    {% slot actions %}
+    {% endslot %}
+</form>
+```
+
+#### allauth/elements/field.html
+
+```django
+<!-- templates/allauth/elements/field.html -->
+{% load allauth %}
+<div class="mb-3">
+    <label for="{{ field.auto_id }}" class="form-label">
+        {{ field.label }}
+        {% if field.field.required %}<span class="text-danger">*</span>{% endif %}
+    </label>
+    
+    {% if field.field.widget.input_type == 'checkbox' %}
+        <div class="form-check">
+            {{ field }}
+        </div>
+    {% else %}
+        {{ field }}
+    {% endif %}
+    
+    {% if field.help_text %}
+        <div class="form-text">{{ field.help_text }}</div>
+    {% endif %}
+    
+    {% if field.errors %}
+        <div class="invalid-feedback d-block">
+            {{ field.errors }}
+        </div>
+    {% endif %}
+</div>
+```
+
+#### allauth/elements/h1.html
+
+```django
+<!-- templates/allauth/elements/h1.html -->
+{% load allauth %}
+<h1 class="mb-4 text-center">{% slot %}{% endslot %}</h1>
+```
+
+#### allauth/elements/provider.html
+
+```django
+<!-- templates/allauth/elements/provider.html -->
+{% load allauth %}
+<a href="{{ attrs.href }}" 
+   class="btn btn-outline-dark w-100 mb-2 d-flex align-items-center justify-content-center">
+    {% if attrs.provider_id == 'google' %}
+        <svg class="me-2" width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+            <!-- Google icon SVG -->
+        </svg>
+    {% endif %}
+    {% slot %}{% endslot %}
+</a>
+```
+
+### Available Elements
+
+All available element templates from `allauth/templates/allauth/elements/`:
+
+| Template | Description |
+|----------|-------------|
+| `alert.html` | Display alert messages |
+| `badge.html` | Badges for labeling |
+| `button.html` | Button element |
+| `button_group.html` | Group of related buttons |
+| `details.html` | Disclosure widget (`<details>`) |
+| `field.html` | Single form field |
+| `fields.html` | All form fields |
+| `form.html` | Form container |
+| `h1.html`, `h2.html` | Headings |
+| `hr.html` | Horizontal rule |
+| `img.html` | Image tag |
+| `panel.html` | Card/panel with title, body, actions |
+| `p.html` | Paragraph |
+| `provider.html` | Social provider link |
+| `provider_list.html` | Container for provider list |
+| `table.html`, `tbody.html`, `td.html`, `th.html`, `thead.html`, `tr.html` | Table elements |
+
+## Full Template Override
+
+For complete control, copy templates from allauth to your project and customize them.
+
+### Template Locations
+
+All allauth templates are in:
+- `allauth/templates/account/` - Account-related templates
+- `allauth/templates/socialaccount/` - Social account templates
+- `allauth/templates/mfa/` - MFA templates
+
+Source: [allauth/templates on Codeberg](https://codeberg.org/allauth/django-allauth/src/branch/main/allauth/templates)
+
+### Common Templates
+
+#### account/login.html
+
+Login page template.
+
+```django
+<!-- templates/account/login.html -->
+{% extends "allauth/layouts/entrance.html" %}
+{% load allauth i18n %}
+
+{% block head_title %}{% trans "Sign In" %}{% endblock %}
+
+{% block inner %}
+    {% element h1 %}
+        {% trans "Sign In" %}
+    {% endelement %}
+    
+    {% if socialaccount.providers %}
+        <div class="mb-4">
+            {% include "socialaccount/snippets/login.html" with page_layout="entrance" %}
+        </div>
+        
+        <div class="text-center mb-3">
+            <span class="text-muted">or</span>
+        </div>
+    {% endif %}
+    
+    {% element form method="post" action=action_url %}
+        {% slot body %}
+            {% csrf_token %}
+            {% element fields form=form %}
+            {% endelement %}
+            
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" name="remember" id="remember">
+                <label class="form-check-label" for="remember">
+                    {% trans "Remember me" %}
+                </label>
+            </div>
+        {% endslot %}
+        
+        {% slot actions %}
+            {% element button type="submit" color="primary" class="w-100" %}
+                {% trans "Sign In" %}
+            {% endelement %}
+            
+            <div class="mt-3 text-center">
+                <a href="{% url 'account_reset_password' %}" class="text-decoration-none">
+                    {% trans "Forgot Password?" %}
+                </a>
+            </div>
+        {% endslot %}
+    {% endelement %}
+    
+    <div class="mt-4 text-center">
+        <span class="text-muted">{% trans "Don't have an account?" %}</span>
+        <a href="{% url 'account_signup' %}" class="text-decoration-none">
+            {% trans "Sign Up" %}
+        </a>
+    </div>
+{% endblock %}
+```
+
+#### account/signup.html
+
+Signup page template.
+
+```django
+<!-- templates/account/signup.html -->
+{% extends "allauth/layouts/entrance.html" %}
+{% load allauth i18n %}
+
+{% block head_title %}{% trans "Sign Up" %}{% endblock %}
+
+{% block inner %}
+    {% element h1 %}
+        {% trans "Sign Up" %}
+    {% endelement %}
+    
+    {% if socialaccount.providers %}
+        <div class="mb-4">
+            {% include "socialaccount/snippets/login.html" with page_layout="entrance" %}
+        </div>
+        
+        <div class="text-center mb-3">
+            <span class="text-muted">or</span>
+        </div>
+    {% endif %}
+    
+    {% element form method="post" action=action_url %}
+        {% slot body %}
+            {% csrf_token %}
+            {% element fields form=form %}
+            {% endelement %}
+        {% endslot %}
+        
+        {% slot actions %}
+            {% element button type="submit" color="primary" class="w-100" %}
+                {% trans "Sign Up" %}
+            {% endelement %}
+        {% endslot %}
+    {% endelement %}
+    
+    <div class="mt-4 text-center">
+        <span class="text-muted">{% trans "Already have an account?" %}</span>
+        <a href="{% url 'account_login' %}" class="text-decoration-none">
+            {% trans "Sign In" %}
+        </a>
+    </div>
+{% endblock %}
+```
+
+#### account/email.html
+
+Email management page.
+
+```django
+<!-- templates/account/email.html -->
+{% extends "allauth/layouts/manage.html" %}
+{% load allauth i18n %}
+
+{% block head_title %}{% trans "Email Addresses" %}{% endblock %}
+
+{% block inner %}
+    {% element h1 %}
+        {% trans "Email Addresses" %}
+    {% endelement %}
+    
+    {% if emailaddresses %}
+        {% element form method="post" action=action_url %}
+            {% slot body %}
+                {% csrf_token %}
+                
+                <div class="list-group mb-3">
+                    {% for emailaddress in emailaddresses %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <input type="radio" name="email" value="{{ emailaddress.email }}"
+                                       {% if emailaddress.primary %}checked{% endif %}>
+                                <span class="ms-2">{{ emailaddress.email }}</span>
+                                {% if emailaddress.verified %}
+                                    <span class="badge bg-success ms-2">{% trans "Verified" %}</span>
+                                {% else %}
+                                    <span class="badge bg-warning ms-2">{% trans "Unverified" %}</span>
+                                {% endif %}
+                                {% if emailaddress.primary %}
+                                    <span class="badge bg-primary ms-2">{% trans "Primary" %}</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endslot %}
+            
+            {% slot actions %}
+                <div class="btn-group" role="group">
+                    {% element button type="submit" name="action" attrs:value="primary" %}
+                        {% trans "Make Primary" %}
+                    {% endelement %}
+                    
+                    {% element button type="submit" name="action" attrs:value="remove" color="danger" %}
+                        {% trans "Remove" %}
+                    {% endelement %}
+                </div>
+            {% endslot %}
+        {% endelement %}
+    {% endif %}
+    
+    <hr class="my-4">
+    
+    {% element h2 %}
+        {% trans "Add Email Address" %}
+    {% endelement %}
+    
+    {% element form method="post" action=add_action_url %}
+        {% slot body %}
+            {% csrf_token %}
+            {% element fields form=form %}
+            {% endelement %}
+        {% endslot %}
+        
+        {% slot actions %}
+            {% element button type="submit" name="action" attrs:value="add" %}
+                {% trans "Add Email" %}
+            {% endelement %}
+        {% endslot %}
+    {% endelement %}
+{% endblock %}
+```
+
+## Email Templates
+
+Customize email templates sent by allauth:
+
+### Email Structure
+
+Each email has three templates:
+- `*_subject.txt` - Email subject line
+- `*_message.txt` - Plain text body
+- `*_message.html` - HTML body (optional)
+
+### Common Email Templates
+
+```
+templates/account/email/
+├── email_confirmation_subject.txt
+├── email_confirmation_message.txt
+├── email_confirmation_message.html
+├── email_confirmation_signup_subject.txt
+├── email_confirmation_signup_message.txt
+├── password_reset_key_subject.txt
+├── password_reset_key_message.txt
+└── password_reset_key_message.html
+```
+
+#### Example: Email Confirmation
+
+```django
+{# templates/account/email/email_confirmation_subject.txt #}
+{% load i18n %}
+{% autoescape off %}
+{% trans "Please Confirm Your Email Address" %}
+{% endautoescape %}
+```
+
+```django
+{# templates/account/email/email_confirmation_message.txt #}
+{% load i18n %}
+{% autoescape off %}
+{% trans "Hello" %} {{ user }},
+
+{% trans "Thank you for signing up. Please confirm your email address by clicking the link below:" %}
+
+{{ activate_url }}
+
+{% trans "If you did not request this, please ignore this email." %}
+
+{% trans "Thanks" %},
+{{ current_site.name }}
+{% endautoescape %}
+```
+
+```django
+{# templates/account/email/email_confirmation_message.html #}
+{% load i18n %}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .button { display: inline-block; padding: 12px 24px; background: #007bff; 
+                  color: white; text-decoration: none; border-radius: 4px; }
+        .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd; 
+                  color: #666; font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>{% trans "Please Confirm Your Email Address" %}</h2>
+        
+        <p>{% trans "Hello" %} {{ user }},</p>
+        
+        <p>{% trans "Thank you for signing up. Please confirm your email address by clicking the button below:" %}</p>
+        
+        <p style="text-align: center; margin: 30px 0;">
+            <a href="{{ activate_url }}" class="button">{% trans "Confirm Email" %}</a>
+        </p>
+        
+        <p>{% trans "Or copy and paste this link into your browser:" %}</p>
+        <p><a href="{{ activate_url }}">{{ activate_url }}</a></p>
+        
+        <div class="footer">
+            <p>{% trans "If you did not request this, please ignore this email." %}</p>
+            <p>{% trans "Thanks" %}, {{ current_site.name }}</p>
+        </div>
+    </div>
+</body>
+</html>
+```
+
+## Template Tags
+
+django-allauth provides custom template tags.
+
+### user_display
+
+Display a user without making assumptions about representation:
+
+```django
+{% load account %}
+
+{# Direct usage #}
+{% user_display user %}
+
+{# As variable for translation #}
+{% user_display user as user_display %}
+{% blocktrans %}{{ user_display }} has logged in{% endblocktrans %}
+```
+
+Configure display format with `ACCOUNT_USER_DISPLAY` setting.
+
+### provider_login_url
+
+Generate social provider login URLs:
+
+```django
+{% load socialaccount %}
+
+<a href="{% provider_login_url 'google' %}">
+    Sign in with Google
+</a>
+
+{# With process parameter #}
+<a href="{% provider_login_url 'github' process='connect' %}">
+    Connect GitHub
+</a>
+```
+
+## Real-World Examples
+
+### Bootstrap 5 Styling
+
+For a complete Bootstrap 5 example, see the [example project templates](https://codeberg.org/allauth/django-allauth/src/branch/main/examples/regular-django/example/templates).
+
+### Tailwind CSS Example
+
+```django
+<!-- templates/allauth/layouts/entrance.html -->
+{% extends "allauth/layouts/base.html" %}
+
+{% block content %}
+<div class="min-h-screen bg-gray-100 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div class="max-w-md w-full space-y-8">
+        <div class="bg-white p-8 rounded-lg shadow">
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="mb-4 p-4 rounded {% if message.tags == 'success' %}bg-green-50 text-green-800{% elif message.tags == 'error' %}bg-red-50 text-red-800{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+            
+            {% block inner %}
+            {% endblock %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+```
+
+## Best Practices
+
+1. **Start with layouts** - Override layout templates first for quick wins
+2. **Use element templates** - Modify element templates for consistent styling
+3. **Keep structure** - Maintain the original template structure and blocks
+4. **Test responsive design** - Ensure templates work on all device sizes
+5. **Internationalization** - Use `{% trans %}` tags for translatable text
+6. **Accessibility** - Include proper labels, ARIA attributes, and semantic HTML
+7. **Version control** - Track which templates you've overridden
+
+## Related
+
+- [Forms](/configuration/forms) - Customize form fields and validation
+- [Adapters](/configuration/adapters) - Customize behavior
+- [Settings](/configuration/settings) - Configure template extension

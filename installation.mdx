@@ -1,0 +1,300 @@
+---
+title: Installation
+description: Install django-allauth and get started with authentication in your Django project
+---
+
+## Prerequisites
+
+Before installing django-allauth, ensure your environment meets the following requirements:
+
+<CardGroup cols={2}>
+  <Card title="Python" icon="python">
+    Python 3.8 or higher
+  </Card>
+  <Card title="Django" icon="code">
+    Django 4.2 or higher
+  </Card>
+</CardGroup>
+
+<Note>
+  If you're using MySQL with InnoDB and the `utf8mb4` charset on versions lower than 5.7.7, you may need to adjust `ACCOUNT_EMAIL_MAX_LENGTH` due to index size limitations.
+</Note>
+
+## Installation Methods
+
+Choose your preferred package manager to install django-allauth:
+
+<Tabs>
+  <Tab title="pip">
+    ### Basic Installation
+
+    For basic account functionality without social authentication:
+
+    ```bash
+    pip install django-allauth
+    ```
+
+    ### With Social Account Support
+
+    For full functionality including social authentication providers:
+
+    ```bash
+    pip install "django-allauth[socialaccount]"
+    ```
+
+    ### With Additional Features
+
+    Install with specific optional dependencies:
+
+    ```bash
+    # Multi-factor authentication (MFA)
+    pip install "django-allauth[mfa]"
+
+    # SAML 2.0 support
+    pip install "django-allauth[saml]"
+
+    # Headless API support
+    pip install "django-allauth[headless]"
+
+    # All features
+    pip install "django-allauth[socialaccount,mfa,saml,headless]"
+    ```
+  </Tab>
+
+  <Tab title="Poetry">
+    ### Basic Installation
+
+    ```bash
+    poetry add django-allauth
+    ```
+
+    ### With Social Account Support
+
+    ```bash
+    poetry add django-allauth[socialaccount]
+    ```
+
+    ### With Additional Features
+
+    ```bash
+    # Multi-factor authentication
+    poetry add django-allauth[mfa]
+
+    # SAML 2.0 support
+    poetry add django-allauth[saml]
+
+    # Headless API support
+    poetry add django-allauth[headless]
+
+    # All features
+    poetry add django-allauth[socialaccount,mfa,saml,headless]
+    ```
+  </Tab>
+
+  <Tab title="Pipenv">
+    ### Basic Installation
+
+    ```bash
+    pipenv install django-allauth
+    ```
+
+    ### With Social Account Support
+
+    ```bash
+    pipenv install "django-allauth[socialaccount]"
+    ```
+
+    ### With Additional Features
+
+    ```bash
+    # Multi-factor authentication
+    pipenv install "django-allauth[mfa]"
+
+    # SAML 2.0 support
+    pipenv install "django-allauth[saml]"
+
+    # Headless API support
+    pipenv install "django-allauth[headless]"
+
+    # All features
+    pipenv install "django-allauth[socialaccount,mfa,saml,headless]"
+    ```
+  </Tab>
+</Tabs>
+
+## Optional Dependencies
+
+Understanding what each optional dependency provides:
+
+<AccordionGroup>
+  <Accordion title="socialaccount - Social Authentication">
+    Required dependencies:
+    - `oauthlib >= 3.3.0,<4`
+    - `requests >= 2.0.0,<3`
+    - `pyjwt[crypto] >= 2.0,<3`
+
+    Enables authentication with 100+ social providers including:
+    - Google, Facebook, GitHub, Twitter
+    - Microsoft, LinkedIn, Apple
+    - And many more...
+  </Accordion>
+
+  <Accordion title="mfa - Multi-Factor Authentication">
+    Required dependencies:
+    - `qrcode >= 7.0.0,<9`
+    - `fido2 >= 1.1.2,<3`
+
+    Adds support for:
+    - TOTP (Time-based One-Time Password)
+    - WebAuthn / Passkeys
+    - Recovery codes
+  </Accordion>
+
+  <Accordion title="saml - SAML 2.0 Support">
+    Required dependencies:
+    - `python3-saml>=1.15.0,<2.0.0`
+
+    Enables SAML 2.0 for enterprise SSO solutions.
+  </Accordion>
+
+  <Accordion title="headless - Headless API">
+    Required dependencies:
+    - `pyjwt[crypto] >= 2.0,<3`
+
+    Provides RESTful API for:
+    - Single-page applications (React, Vue, Angular)
+    - Mobile applications
+    - Headless CMS integrations
+  </Accordion>
+
+  <Accordion title="openid - OpenID Support">
+    Required dependencies:
+    - `python3-openid >= 3.0.8,<4`
+
+    Adds support for OpenID protocol.
+  </Accordion>
+
+  <Accordion title="steam - Steam Authentication">
+    Required dependencies:
+    - `python3-openid >= 3.0.8,<4`
+
+    Enables authentication via Steam.
+  </Accordion>
+</AccordionGroup>
+
+## Verification
+
+Verify that django-allauth is installed correctly:
+
+```bash
+python -c "import allauth; print(allauth.__version__)"
+```
+
+Expected output:
+```
+65.14.3
+```
+
+<CodeGroup>
+```python Check Version
+import allauth
+
+print(f"django-allauth version: {allauth.__version__}")
+print(f"Title: {allauth.__title__}")
+print(f"Author: {allauth.__author__}")
+```
+
+```python Output
+django-allauth version: 65.14.3
+Title: django-allauth
+Author: Raymond Penners
+```
+</CodeGroup>
+
+## Python & Django Version Matrix
+
+django-allauth supports the following combinations:
+
+| Python Version | Django Versions |
+|----------------|----------------|
+| 3.8            | 4.2+ |
+| 3.9            | 4.2+ |
+| 3.10           | 4.2+, 5.0, 5.1, 5.2 |
+| 3.11           | 4.2+, 5.0, 5.1, 5.2 |
+| 3.12           | 4.2+, 5.0, 5.1, 5.2, 6.0 |
+| 3.13           | 4.2+, 5.0, 5.1, 5.2, 6.0 |
+
+<Note>
+  django-allauth follows Django's supported versions policy. Older versions may work but are not officially tested or supported.
+</Note>
+
+## Development Installation
+
+For contributing to django-allauth or testing the latest features:
+
+```bash
+# Clone the repository
+git clone https://codeberg.org/allauth/django-allauth.git
+cd django-allauth
+
+# Install in development mode
+pip install -e ".[socialaccount,mfa,saml,headless]"
+
+# Run tests
+python manage.py test
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ImportError: No module named 'allauth'">
+    Ensure django-allauth is installed in your active Python environment:
+
+    ```bash
+    pip list | grep django-allauth
+    ```
+
+    If not listed, reinstall:
+
+    ```bash
+    pip install django-allauth
+    ```
+  </Accordion>
+
+  <Accordion title="Version conflicts with other packages">
+    Check for conflicting dependencies:
+
+    ```bash
+    pip check
+    ```
+
+    Consider using a virtual environment:
+
+    ```bash
+    python -m venv venv
+    source venv/bin/activate  # On Windows: venv\Scripts\activate
+    pip install django-allauth
+    ```
+  </Accordion>
+
+  <Accordion title="MySQL InnoDB index size errors">
+    If using MySQL with InnoDB and `utf8mb4` charset (versions < 5.7.7), add to your settings:
+
+    ```python settings.py
+    ACCOUNT_EMAIL_MAX_LENGTH = 191
+    ```
+
+    This reduces the email field length to accommodate the larger character size in `utf8mb4`.
+  </Accordion>
+</AccordionGroup>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Configure django-allauth and get your authentication system up and running
+  </Card>
+  <Card title="Introduction" icon="book-open" href="/introduction">
+    Learn more about django-allauth features and architecture
+  </Card>
+</CardGroup>

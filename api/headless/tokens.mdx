@@ -1,0 +1,623 @@
+---
+title: Token Management
+description: Token strategies and session management for headless authentication
+---
+
+The headless API uses token-based authentication for app clients. Django-allauth provides flexible token strategies to handle session management and access token generation.
+
+## Token Strategies
+
+Token strategies control how sessions are created, validated, and converted to access tokens. The strategy is configured via `HEADLESS_TOKEN_STRATEGY`.
+
+### Available Strategies
+
+#### SessionTokenStrategy
+
+The default strategy uses Django session keys as tokens.
+
+**Configuration**
+
+```python
+HEADLESS_TOKEN_STRATEGY = "allauth.headless.tokens.strategies.sessions.SessionTokenStrategy"
+```
+
+**Characteristics**
+
+- Session token = Django session key
+- No access tokens generated
+- Simple stateful authentication
+- Suitable for mobile apps connecting to a single backend
+
+**Session Token Example**
+
+```
+X-Session-Token: k3j4h5g6j7h8k9l0m1n2o3p4q5r6s7t8
+```
+
+---
+
+#### JWTTokenStrategy
+
+Generates JWT access and refresh tokens for stateless authentication.
+
+**Configuration**
+
+```python
+HEADLESS_TOKEN_STRATEGY = "allauth.headless.tokens.strategies.jwt.strategy.JWTTokenStrategy"
+```
+
+**Characteristics**
+
+- Generates signed JWT access tokens
+- Provides refresh tokens for token renewal
+- Supports stateless or stateful validation
+- Suitable for microservices and multi-backend architectures
+
+**Access Token Example**
+
+```
+Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+```
+
+## Session Tokens
+
+Session tokens are required for the authentication process in app clients. They map to Django sessions and persist authentication state.
+
+### Creating Session Tokens
+
+Session tokens are automatically created during authentication flows (login, signup) and returned in the response metadata.
+
+**Example Authentication Response**
+
+```json
+{
+  "data": {
+    "user": {
+      "id": 123,
+      "email": "user@example.com"
+    }
+  },
+  "meta": {
+    "is_authenticated": true,
+    "session_token": "k3j4h5g6j7h8k9l0m1n2o3p4q5r6s7t8"
+  }
+}
+```
+
+### Using Session Tokens
+
+Include the session token in subsequent requests using the `X-Session-Token` header.
+
+**Request Example**
+
+```bash
+curl -X GET https://example.com/_allauth/app/v1/auth/session \
+  -H "X-Session-Token: k3j4h5g6j7h8k9l0m1n2o3p4q5r6s7t8"
+```
+
+### Session Token Lifecycle
+
+Session tokens are tied to Django sessions:
+
+1. **Creation**: Generated when user authenticates
+2. **Validation**: Validated on each request by looking up the session
+3. **Expiration**: Expires based on `SESSION_COOKIE_AGE` setting
+4. **Invalidation**: Deleted when user logs out
+
+## JWT Access Tokens
+
+When using `JWTTokenStrategy`, access tokens are JWT tokens that encode user identity and can be validated without database access.
+
+### JWT Configuration
+
+Configure JWT settings in your Django settings:
+
+<ParamField path="HEADLESS_JWT_ALGORITHM" type="string" default="RS256">
+  Algorithm for signing tokens. Supported: `HS256`, `HS512`, `RS256`, `RS512`
+</ParamField>
+
+<ParamField path="HEADLESS_JWT_PRIVATE_KEY" type="string">
+  Private key for RS algorithms (PEM format). For HS algorithms, uses `SECRET_KEY` if not provided.
+</ParamField>
+
+<ParamField path="HEADLESS_JWT_ACCESS_TOKEN_EXPIRES_IN" type="int" default="300">
+  Access token lifetime in seconds (default: 5 minutes)
+</ParamField>
+
+<ParamField path="HEADLESS_JWT_REFRESH_TOKEN_EXPIRES_IN" type="int" default="86400">
+  Refresh token lifetime in seconds (default: 24 hours)
+</ParamField>
+
+<ParamField path="HEADLESS_JWT_AUTHORIZATION_HEADER_SCHEME" type="string" default="Bearer">
+  Authorization header scheme
+</ParamField>
+
+<ParamField path="HEADLESS_JWT_STATEFUL_VALIDATION_ENABLED" type="boolean" default="false">
+  Whether to validate access tokens against the session (stateful) or only verify signature (stateless)
+</ParamField>
+
+<ParamField path="HEADLESS_JWT_ROTATE_REFRESH_TOKEN" type="boolean" default="true">
+  Whether to issue a new refresh token on each refresh request
+</ParamField>
+
+**Example Configuration**
+
+```python
+# settings.py
+HEADLESS_TOKEN_STRATEGY = "allauth.headless.tokens.strategies.jwt.strategy.JWTTokenStrategy"
+HEADLESS_JWT_ALGORITHM = "RS256"
+HEADLESS_JWT_PRIVATE_KEY = """
+-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC...
+-----END PRIVATE KEY-----
+"""
+HEADLESS_JWT_ACCESS_TOKEN_EXPIRES_IN = 300  # 5 minutes
+HEADLESS_JWT_REFRESH_TOKEN_EXPIRES_IN = 86400  # 24 hours
+HEADLESS_JWT_ROTATE_REFRESH_TOKEN = True
+```
+
+### JWT Payload Structure
+
+Access tokens contain the following claims:
+
+<ResponseField name="sub" type="string">
+  Subject: User ID (primary key as string)
+</ResponseField>
+
+<ResponseField name="iat" type="number">
+  Issued at: Unix timestamp
+</ResponseField>
+
+<ResponseField name="exp" type="number">
+  Expiration: Unix timestamp
+</ResponseField>
+
+<ResponseField name="jti" type="string">
+  JWT ID: Unique token identifier (UUID)
+</ResponseField>
+
+<ResponseField name="sid" type="string">
+  Session ID: Encrypted session key
+</ResponseField>
+
+<ResponseField name="token_use" type="string">
+  Token use: `access` or `refresh`
+</ResponseField>
+
+**Example Access Token Payload**
+
+```json
+{
+  "sub": "123",
+  "iat": 1678901234,
+  "exp": 1678901534,
+  "jti": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "sid": "dGhpc2lzYW5lbmNyeXB0ZWRzZXNzaW9ua2V5",
+  "token_use": "access"
+}
+```
+
+### Custom JWT Claims
+
+You can add custom claims to access tokens by extending `JWTTokenStrategy`:
+
+```python
+from allauth.headless.tokens.strategies.jwt.strategy import JWTTokenStrategy
+
+class CustomJWTTokenStrategy(JWTTokenStrategy):
+    def get_claims(self, user):
+        claims = super().get_claims(user)
+        claims.update({
+            "email": user.email,
+            "is_staff": user.is_staff,
+            "groups": list(user.groups.values_list("name", flat=True)),
+        })
+        return claims
+```
+
+Then configure it:
+
+```python
+HEADLESS_TOKEN_STRATEGY = "myapp.tokens.CustomJWTTokenStrategy"
+```
+
+**Reserved Claims**
+
+The following claims are reserved and will be overwritten:
+- `iat` (issued at)
+- `exp` (expiration)
+- `sid` (session ID)
+- `jti` (JWT ID)
+- `token_use` (token type)
+- `sub` (subject/user ID)
+
+### Obtaining JWT Tokens
+
+JWT tokens are returned in the `meta` section of authentication responses:
+
+```json
+{
+  "data": {
+    "user": {
+      "id": 123,
+      "email": "user@example.com"
+    }
+  },
+  "meta": {
+    "is_authenticated": true,
+    "session_token": "k3j4h5g6...",
+    "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}
+```
+
+### Using JWT Tokens
+
+Include the access token in the `Authorization` header:
+
+```bash
+curl -X GET https://example.com/_allauth/app/v1/auth/session \
+  -H "Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+Alternatively, use the session token header:
+
+```bash
+curl -X GET https://example.com/_allauth/app/v1/auth/session \
+  -H "X-Session-Token: k3j4h5g6..."
+```
+
+## Refresh Tokens
+
+Refresh tokens are long-lived tokens used to obtain new access tokens without re-authentication.
+
+### Token Refresh Flow
+
+1. Client receives access and refresh tokens after authentication
+2. Client uses access token for API requests
+3. When access token expires, client calls `/tokens/refresh` with refresh token
+4. Server validates refresh token and returns new access token
+5. If rotation is enabled, server also returns new refresh token
+
+**Refresh Request**
+
+```bash
+curl -X POST https://example.com/_allauth/app/v1/tokens/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."}'
+```
+
+**Refresh Response**
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+### Refresh Token Rotation
+
+When `HEADLESS_JWT_ROTATE_REFRESH_TOKEN` is `True` (default):
+
+- Each refresh request invalidates the old refresh token
+- A new refresh token is issued
+- Provides better security against token theft
+
+When set to `False`:
+
+- Refresh token remains valid until expiration
+- Response contains only `access_token` (no new refresh token)
+- Simpler client implementation
+
+### Refresh Token Storage
+
+Refresh tokens are stored in the Django session:
+
+```python
+# Session data structure
+{
+  "headless_refresh_tokens": {
+    "a1b2c3d4-e5f6-7890-abcd-ef1234567890": 1678987634,  # jti: exp
+    "f1e2d3c4-b5a6-0987-dcba-fe0987654321": 1678987645
+  }
+}
+```
+
+This allows:
+- Revoking all tokens by clearing session
+- Tracking active refresh tokens per session
+- Automatic cleanup on session expiration
+
+### Refresh Token Invalidation
+
+Refresh tokens are invalidated when:
+
+1. **Token rotated**: Old token removed from session on refresh
+2. **User logs out**: Session deleted, invalidating all tokens
+3. **Session expires**: All associated tokens become invalid
+4. **Token expires**: Natural expiration based on `exp` claim
+
+## Token Validation
+
+### Stateless Validation
+
+With `HEADLESS_JWT_STATEFUL_VALIDATION_ENABLED = False` (default):
+
+- Access tokens are validated by signature only
+- No database queries required
+- Fast and scalable
+- Tokens remain valid until expiration, even after logout
+
+**Use case**: Microservices, high-scale APIs, distributed systems
+
+### Stateful Validation
+
+With `HEADLESS_JWT_STATEFUL_VALIDATION_ENABLED = True`:
+
+- Access tokens are validated against the session
+- Requires database lookup per request
+- Tokens invalidated immediately on logout
+- More secure but slower
+
+**Use case**: Single backend, security-critical applications
+
+### Validation Flow
+
+```python
+from allauth.headless.tokens.strategies.jwt import internal
+
+# Validate access token
+user_payload = internal.validate_access_token(access_token)
+if user_payload:
+    user, payload = user_payload
+    # user is a lazy-loaded User instance
+    # payload contains JWT claims
+
+# Validate refresh token
+result = internal.validate_refresh_token(refresh_token)
+if result:
+    user, session, payload = result
+    # Generate new access token
+```
+
+## Session Management
+
+### Session Lookup
+
+The token strategy provides session lookup functionality:
+
+```python
+from allauth.headless import app_settings
+
+strategy = app_settings.TOKEN_STRATEGY
+
+# Get session token from request
+session_token = strategy.get_session_token(request)
+
+# Lookup session
+session = strategy.lookup_session(session_token)
+if session:
+    user = session.get("_auth_user_id")
+```
+
+### Session Token Encryption
+
+JWT tokens encrypt the session key in the `sid` claim to prevent session hijacking:
+
+- Session key encrypted with AES-256-CTR using `SECRET_KEY`
+- Random initialization vector per token
+- Even if JWT leaks, session key cannot be extracted for direct use
+
+**Implementation**
+
+```python
+from allauth.headless.tokens.strategies.jwt import internal
+
+# Encrypt session key
+sid = internal.session_key_to_sid(session_key)
+
+# Decrypt session key
+session_key = internal.session_key_from_sid(sid)
+```
+
+## Custom Token Strategy
+
+You can implement a custom token strategy by extending `AbstractTokenStrategy`:
+
+```python
+from typing import Optional, Dict, Any, Tuple
+from django.http import HttpRequest
+from django.contrib.sessions.backends.base import SessionBase
+from allauth.headless.tokens.strategies.base import AbstractTokenStrategy
+
+class CustomTokenStrategy(AbstractTokenStrategy):
+    def create_session_token(self, request: HttpRequest) -> str:
+        """Create a session token."""
+        # Your implementation
+        pass
+    
+    def lookup_session(self, session_token: str) -> Optional[SessionBase]:
+        """Lookup session by token."""
+        # Your implementation
+        pass
+    
+    def create_access_token(self, request: HttpRequest) -> Optional[str]:
+        """Create an access token (optional)."""
+        # Return None if access tokens are not needed
+        return None
+    
+    def create_access_token_payload(self, request: HttpRequest) -> Optional[Dict[str, Any]]:
+        """Create access token response payload."""
+        at = self.create_access_token(request)
+        if not at:
+            return None
+        return {
+            "access_token": at,
+            # Add other fields like expires_in, token_type, etc.
+        }
+    
+    def refresh_token(self, refresh_token: str) -> Optional[Tuple[str, str]]:
+        """Refresh an access token."""
+        # Return (access_token, refresh_token) or None
+        return None
+```
+
+Then configure it:
+
+```python
+HEADLESS_TOKEN_STRATEGY = "myapp.tokens.CustomTokenStrategy"
+```
+
+## Security Considerations
+
+### Token Storage
+
+**Access Tokens**
+- Short-lived (5-15 minutes recommended)
+- Can be stored in memory on mobile apps
+- For web apps, consider secure storage (not localStorage)
+
+**Refresh Tokens**
+- Long-lived (hours to days)
+- Store securely on client (encrypted storage, keychain)
+- Never expose in URLs or logs
+
+**Session Tokens**
+- Tied to Django session lifetime
+- Store securely (same as refresh tokens)
+
+### Token Transmission
+
+- Always use HTTPS in production
+- Never include tokens in URLs or query parameters
+- Use proper HTTP headers (`Authorization`, `X-Session-Token`)
+
+### Token Revocation
+
+**Immediate revocation** (stateful validation):
+```python
+# Logout - invalidates session and all tokens
+request.session.flush()
+```
+
+**Eventual revocation** (stateless validation):
+- Tokens remain valid until expiration
+- Use short-lived access tokens (5-15 minutes)
+- Implement token blacklist for critical scenarios
+
+### Best Practices
+
+1. **Use short access token lifetimes** (5-15 minutes)
+2. **Enable refresh token rotation** for better security
+3. **Use stateful validation** for security-critical apps
+4. **Use RS256 algorithm** for JWT if tokens are validated by multiple services
+5. **Rotate private keys** periodically
+6. **Monitor failed token validations** for security incidents
+7. **Implement rate limiting** on refresh endpoint
+8. **Use HTTPS** in production
+
+## Integration Examples
+
+### React Native
+
+```javascript
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+class AuthService {
+  async login(email, password) {
+    const response = await fetch('https://api.example.com/_allauth/app/v1/auth/login', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({email, password}),
+    });
+    
+    const data = await response.json();
+    if (data.meta.is_authenticated) {
+      await AsyncStorage.setItem('access_token', data.meta.access_token);
+      await AsyncStorage.setItem('refresh_token', data.meta.refresh_token);
+    }
+    return data;
+  }
+  
+  async refreshToken() {
+    const refreshToken = await AsyncStorage.getItem('refresh_token');
+    const response = await fetch('https://api.example.com/_allauth/app/v1/tokens/refresh', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({refresh_token: refreshToken}),
+    });
+    
+    const data = await response.json();
+    await AsyncStorage.setItem('access_token', data.access_token);
+    if (data.refresh_token) {
+      await AsyncStorage.setItem('refresh_token', data.refresh_token);
+    }
+    return data;
+  }
+  
+  async apiRequest(url, options = {}) {
+    const accessToken = await AsyncStorage.getItem('access_token');
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': `Bearer ${accessToken}`,
+      },
+    });
+    
+    if (response.status === 401) {
+      // Token expired, try refresh
+      await this.refreshToken();
+      // Retry request
+      return this.apiRequest(url, options);
+    }
+    
+    return response;
+  }
+}
+```
+
+### Flutter
+
+```dart
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
+
+class AuthService {
+  final storage = FlutterSecureStorage();
+  final baseUrl = 'https://api.example.com/_allauth/app/v1';
+  
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+    
+    final data = jsonDecode(response.body);
+    if (data['meta']['is_authenticated']) {
+      await storage.write(key: 'access_token', value: data['meta']['access_token']);
+      await storage.write(key: 'refresh_token', value: data['meta']['refresh_token']);
+    }
+    return data;
+  }
+  
+  Future<Map<String, dynamic>> refreshToken() async {
+    final refreshToken = await storage.read(key: 'refresh_token');
+    final response = await http.post(
+      Uri.parse('$baseUrl/tokens/refresh'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'refresh_token': refreshToken}),
+    );
+    
+    final data = jsonDecode(response.body);
+    await storage.write(key: 'access_token', value: data['access_token']);
+    if (data.containsKey('refresh_token')) {
+      await storage.write(key: 'refresh_token', value: data['refresh_token']);
+    }
+    return data;
+  }
+}
+```

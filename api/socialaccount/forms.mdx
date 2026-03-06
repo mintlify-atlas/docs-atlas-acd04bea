@@ -1,0 +1,329 @@
+---
+title: "Forms"
+description: "Django forms for social authentication"
+---
+
+## SignupForm
+
+Form for completing social account signup when additional information is required.
+
+### Inheritance
+
+```python
+class SignupForm(BaseSignupForm)
+```
+
+Extends `allauth.account.forms.BaseSignupForm` with social account-specific functionality.
+
+### Constructor
+
+```python
+def __init__(self, *args, **kwargs)
+```
+
+<ParamField path="sociallogin" type="SocialLogin" required>
+  The `SocialLogin` instance for the user being signed up. Must be passed as a keyword argument.
+</ParamField>
+
+<ParamField path="email_required" type="bool">
+  Whether email is required. Defaults to `SOCIALACCOUNT_EMAIL_REQUIRED` setting.
+</ParamField>
+
+**Example:**
+
+```python
+from allauth.socialaccount.forms import SignupForm
+
+form = SignupForm(sociallogin=sociallogin, data=request.POST)
+if form.is_valid():
+    user = form.save(request)
+```
+
+### Attributes
+
+<ParamField path="sociallogin" type="SocialLogin">
+  The social login instance associated with this signup.
+</ParamField>
+
+### Methods
+
+#### save()
+
+```python
+def save(request) -> User
+```
+
+Saves the user account with data from both the form and the social login.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ResponseField name="return" type="User">
+  The newly created user instance.
+</ResponseField>
+
+**Example:**
+
+```python
+if form.is_valid():
+    user = form.save(request)
+    # User is now saved with social account connected
+```
+
+**Process:**
+1. Calls the adapter's `save_user()` method
+2. Invokes `custom_signup()` hook for additional processing
+3. Returns the saved user
+
+#### validate_unique_email()
+
+```python
+def validate_unique_email(value) -> str
+```
+
+Validates that the email address is unique.
+
+<ParamField path="value" type="str">
+  The email address to validate.
+</ParamField>
+
+<ResponseField name="return" type="str">
+  The validated email address.
+</ResponseField>
+
+**Raises:**
+- `ValidationError` if the email is already taken, with a provider-specific error message.
+
+**Example:**
+
+```python
+# Automatically called during form validation
+# Error message will include the provider name:
+# "An account already exists with this email address. 
+#  Please sign in to that account first, then connect your Google account."
+```
+
+### Usage in Views
+
+```python
+from django.views.generic.edit import FormView
+from allauth.socialaccount.forms import SignupForm
+
+class SocialSignupView(FormView):
+    form_class = SignupForm
+    
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['sociallogin'] = self.get_sociallogin()
+        return kwargs
+    
+    def form_valid(self, form):
+        user = form.save(self.request)
+        # Continue with login flow
+        return HttpResponseRedirect(self.get_success_url())
+```
+
+---
+
+## DisconnectForm
+
+Form for disconnecting a social account from a user's profile.
+
+### Inheritance
+
+```python
+class DisconnectForm(forms.Form)
+```
+
+### Constructor
+
+```python
+def __init__(self, *args, **kwargs)
+```
+
+<ParamField path="request" type="HttpRequest" required>
+  The Django request object. Must be passed as a keyword argument.
+</ParamField>
+
+**Example:**
+
+```python
+from allauth.socialaccount.forms import DisconnectForm
+
+form = DisconnectForm(request=request, data=request.POST)
+if form.is_valid():
+    form.save()
+```
+
+### Fields
+
+<ParamField path="account" type="ModelChoiceField">
+  Radio select field for choosing which social account to disconnect.
+  
+  **Widget:** `RadioSelect`  
+  **Required:** Yes  
+  **Queryset:** Social accounts belonging to the current user
+</ParamField>
+
+### Attributes
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ParamField path="accounts" type="QuerySet">
+  QuerySet of the user's social accounts.
+</ParamField>
+
+### Methods
+
+#### clean()
+
+```python
+def clean() -> dict
+```
+
+Validates that the selected account can be safely disconnected.
+
+<ResponseField name="return" type="dict">
+  The cleaned form data.
+</ResponseField>
+
+**Raises:**
+- `ValidationError` if disconnecting the account would leave the user unable to log in.
+
+**Validation checks:**
+- User has a usable password, OR
+- User has another connected social account, OR
+- User has a verified email address
+
+**Example error:**
+
+```python
+# If user only has this social account and no password:
+# "You cannot disconnect this account as you have no password set. 
+#  Please set a password first."
+```
+
+#### save()
+
+```python
+def save() -> None
+```
+
+Disconnects the selected social account from the user.
+
+**Example:**
+
+```python
+if form.is_valid():
+    form.save()
+    # Social account has been disconnected
+    # User receives notification email
+```
+
+**Process:**
+1. Validates the disconnection is safe
+2. Deletes the social account
+3. Sends `social_account_removed` signal
+4. Sends notification email to user
+
+### Usage in Views
+
+```python
+from django.views.generic.edit import FormView
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+from allauth.socialaccount.forms import DisconnectForm
+
+@method_decorator(login_required, name='dispatch')
+class ConnectionsView(FormView):
+    form_class = DisconnectForm
+    template_name = 'socialaccount/connections.html'
+    success_url = '/accounts/social/connections/'
+    
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['request'] = self.request
+        return kwargs
+    
+    def form_valid(self, form):
+        form.save()
+        messages.success(self.request, 'Social account disconnected.')
+        return super().form_valid(form)
+```
+
+### Template Usage
+
+```html
+<form method="post">
+  {% csrf_token %}
+  
+  <h3>Connected Accounts</h3>
+  
+  {% for account in form.accounts %}
+    <div class="social-account">
+      <label>
+        <input type="radio" name="account" value="{{ account.id }}">
+        {{ account.get_provider.name }} - {{ account }}
+      </label>
+    </div>
+  {% endfor %}
+  
+  <button type="submit">Disconnect</button>
+</form>
+```
+
+## Form Customization
+
+Both forms can be customized through settings:
+
+```python
+# settings.py
+SOCIALACCOUNT_FORMS = {
+    'signup': 'myapp.forms.MyCustomSignupForm',
+    'disconnect': 'myapp.forms.MyCustomDisconnectForm',
+}
+```
+
+### Custom SignupForm Example
+
+```python
+from allauth.socialaccount.forms import SignupForm
+
+class MyCustomSignupForm(SignupForm):
+    
+    newsletter = forms.BooleanField(
+        required=False,
+        label='Subscribe to newsletter'
+    )
+    
+    def save(self, request):
+        user = super().save(request)
+        if self.cleaned_data.get('newsletter'):
+            # Subscribe user to newsletter
+            subscribe_to_newsletter(user.email)
+        return user
+```
+
+### Custom DisconnectForm Example
+
+```python
+from allauth.socialaccount.forms import DisconnectForm
+
+class MyCustomDisconnectForm(DisconnectForm):
+    
+    confirm = forms.BooleanField(
+        required=True,
+        label='I understand this will disconnect my social account'
+    )
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        if not cleaned_data.get('confirm'):
+            raise forms.ValidationError(
+                'You must confirm the disconnection.'
+            )
+        return cleaned_data
+```

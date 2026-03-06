@@ -1,0 +1,186 @@
+---
+title: Introduction
+description: Welcome to django-allauth, the comprehensive Django authentication solution
+---
+
+<img
+  src="https://codeberg.org/allauth/allauth.org/raw/commit/da3b56390e1b18eaec09b05cd89dfa7812212dfc/content/news/2024/04/website-redesign/logo-light.png"
+  alt="django-allauth logo"
+  width="250"
+/>
+
+## What is django-allauth?
+
+django-allauth is an integrated set of Django applications addressing authentication, registration, account management as well as 3rd party (social) account authentication.
+
+<CardGroup cols={2}>
+  <Card title="Official Website" icon="globe" href="https://allauth.org">
+    Visit the official django-allauth website
+  </Card>
+  <Card title="Source Code" icon="code" href="https://codeberg.org/allauth/django-allauth">
+    View the source code on Codeberg
+  </Card>
+  <Card title="Documentation" icon="book" href="https://docs.allauth.org/en/latest/">
+    Full API documentation and guides
+  </Card>
+  <Card title="Stack Overflow" icon="stack-overflow" href="https://stackoverflow.com/questions/tagged/django-allauth">
+    Get help from the community
+  </Card>
+</CardGroup>
+
+## Why django-allauth?
+
+Most existing Django apps that address the problem of social authentication unfortunately focus only on one dimension - the social. Most developers end up integrating another app in order to support authentication flows that are locally generated.
+
+This approach creates a development gap between local and social authentication flows. It has remained an issue in spite of numerous common scenarios that both require. For example, an email address passed along by an OpenID provider may not be verified. Therefore, prior to hooking up an OpenID account to a local account the email address must be verified. This essentially is one of many use cases that mandate email verification to be present in both worlds.
+
+Integrating both is a humongous and tedious process. It is not as simple as adding one social authentication app, and one local account registration app to your `INSTALLED_APPS` list.
+
+<Note>
+  django-allauth exists to offer a fully integrated authentication app that allows for both local and social authentication, with flows that just work, beautifully!
+</Note>
+
+## Key Features
+
+### Comprehensive Account Functionality
+
+Supports multiple authentication schemes (e.g. login by user name, or by email), as well as multiple strategies for account verification (ranging from none to mandatory email verification).
+
+### Social Login
+
+Login using external identity providers, supporting:
+- Any **Open ID Connect compatible** provider
+- Many **OAuth 1.0/2.0** providers
+- Custom protocols such as **Telegram** authentication
+
+<Tip>
+  django-allauth supports over 100+ social providers out of the box, including Google, GitHub, Facebook, Twitter, LinkedIn, and many more.
+</Tip>
+
+### Enterprise Ready
+
+Supports **SAML 2.0**, which is often used in a B2B context for enterprise single sign-on solutions.
+
+### Battle-Tested Security
+
+The package has been out in the open since **2010**. It is in use by many commercial companies whose business depends on it and has hence been subjected to various penetration testing attempts.
+
+<CardGroup cols={2}>
+  <Card title="Rate Limiting" icon="shield-halved">
+    When you expose an authentication-enabled web service to the internet, it is important to be prepared for potential brute force attempts. Therefore, rate limiting is enabled out of the box.
+  </Card>
+  <Card title="Privacy Protection" icon="user-shield">
+    Many sites leak information. For example, on many sites you can check whether someone you know has an account by input their email address into the password forgotten form. django-allauth offers account enumeration prevention, making it impossible to tell whether or not somebody already has an account.
+  </Card>
+</CardGroup>
+
+### Highly Customizable
+
+As a developer, you have the flexibility to customize the core functionality according to your specific requirements. By employing the adapter pattern, you can effortlessly introduce interventions at the desired points to deviate from the standard behavior.
+
+### Flexible Configuration
+
+The required consumer keys and secrets for interacting with Facebook, X (Twitter) and the likes can be configured using:
+- Regular Django settings
+- Database configuration via the Django admin
+- Optional support for the Django sites framework for multi-domain projects
+
+## Architecture Design
+
+This package is internally subdivided into individual Django apps that each target a specific functional part:
+
+<Steps>
+  <Step title="allauth.account">
+    Functionality related to regular (username and/or email based) accounts
+  </Step>
+  <Step title="allauth.socialaccount">
+    Functionality related to social accounts and third-party authentication providers
+  </Step>
+  <Step title="allauth.mfa">
+    Functionality related to multi-factor authentication (TOTP, WebAuthn, recovery codes)
+  </Step>
+  <Step title="allauth.headless">
+    RESTful API for headless/SPA applications
+  </Step>
+  <Step title="allauth.usersessions">
+    User session management and tracking
+  </Step>
+</Steps>
+
+## Version Information
+
+<CodeGroup>
+```python Current Version
+__version__ = "65.14.3"
+```
+
+```python Version Info
+VERSION = (65, 14, 3, "final", 0)
+```
+</CodeGroup>
+
+## Requirements
+
+<Warning>
+  django-allauth requires Django 4.2 or higher and Python 3.8 or higher.
+</Warning>
+
+**Supported Python versions:**
+- Python 3.8, 3.9, 3.10, 3.11, 3.12, 3.13
+
+**Supported Django versions:**
+- Django 4.2+
+- Django 5.0, 5.1, 5.2
+- Django 6.0
+
+**Core dependencies:**
+- `Django >= 4.2.16`
+- `asgiref >= 3.8.1`
+
+**Optional dependencies:**
+- `socialaccount`: OAuth and social authentication support
+- `mfa`: Multi-factor authentication support (TOTP, WebAuthn)
+- `saml`: SAML 2.0 support
+- `headless`: JWT-based headless API support
+- `openid`: OpenID support
+
+## Live Demos
+
+Experience django-allauth in action:
+
+<CardGroup cols={2}>
+  <Card title="Django Demo" icon="python" href="https://django.demo.allauth.org">
+    Traditional server-rendered Django application
+  </Card>
+  <Card title="React SPA Demo" icon="react" href="https://react.demo.allauth.org">
+    Modern single-page application using the headless API
+  </Card>
+</CardGroup>
+
+## Community & Support
+
+<CardGroup cols={2}>
+  <Card title="GitHub Sponsors" icon="heart" href="https://github.com/sponsors/pennersr">
+    Support the project's development
+  </Card>
+  <Card title="Commercial Support" icon="briefcase" href="mailto:info@intenct.nl">
+    Commercial support is available. Contact: info@intenct.nl
+  </Card>
+  <Card title="Translations" icon="language" href="https://hosted.weblate.org/projects/allauth/django-allauth/">
+    Help translate django-allauth
+  </Card>
+  <Card title="Issue Tracker" icon="bug" href="https://codeberg.org/allauth/django-allauth/issues">
+    Report bugs and request features
+  </Card>
+</CardGroup>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Learn how to install django-allauth in your project
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running with a working authentication system
+  </Card>
+</CardGroup>

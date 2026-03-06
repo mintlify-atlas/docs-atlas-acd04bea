@@ -1,0 +1,396 @@
+---
+title: MFA Adapter
+description: Customization interface for multi-factor authentication behavior
+---
+
+## Overview
+
+The MFA adapter provides hooks to customize multi-factor authentication behavior, including TOTP configuration, WebAuthn settings, and encryption of secrets.
+
+## DefaultMFAAdapter
+
+**Source:** `allauth/mfa/adapter.py:23`
+
+The base adapter class that can be subclassed to customize MFA functionality.
+
+### Configuration
+
+To use a custom adapter, set `MFA_ADAPTER` in your settings:
+
+```python
+# settings.py
+MFA_ADAPTER = 'myapp.adapters.CustomMFAAdapter'
+```
+
+### Error Messages
+
+**Source:** `allauth/mfa/adapter.py:30`
+
+The adapter defines standard error messages that can be overridden:
+
+```python
+error_messages = {
+    "add_email_blocked": _("You cannot add an email address to an account protected by two-factor authentication."),
+    "cannot_delete_authenticator": _("You cannot deactivate two-factor authentication."),
+    "cannot_generate_recovery_codes": _("You cannot generate recovery codes without having two-factor authentication enabled."),
+    "incorrect_code": _("Incorrect code."),
+    "unverified_email": _("You cannot activate two-factor authentication until you have verified your email address."),
+}
+```
+
+## TOTP Methods
+
+### `get_totp_label(user)`
+
+**Source:** `allauth/mfa/adapter.py:47`
+
+Returns the label used to represent the user in a TOTP QR code.
+
+**Parameters:**
+- `user` - User instance
+
+**Returns:** `str` - User identifier (email, username, or string representation)
+
+**Default behavior:** Returns user's email, username, or `str(user)` in that order of preference.
+
+```python
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def get_totp_label(self, user):
+        return f"{user.email} ({user.get_full_name()})"
+```
+
+### `get_totp_issuer()`
+
+**Source:** `allauth/mfa/adapter.py:64`
+
+Returns the TOTP issuer name displayed in authenticator apps.
+
+**Returns:** `str` - Issuer name
+
+**Default behavior:** Returns `MFA_TOTP_ISSUER` setting or site name.
+
+```python
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def get_totp_issuer(self):
+        return "My Company Name"
+```
+
+### `build_totp_url(user, secret)`
+
+**Source:** `allauth/mfa/adapter.py:73`
+
+Builds the `otpauth://` URL for TOTP QR codes.
+
+**Parameters:**
+- `user` - User instance
+- `secret` (`str`) - Base32-encoded TOTP secret
+
+**Returns:** `str` - TOTP URL in `otpauth://totp/` format
+
+**URL format:**
+```
+otpauth://totp/user@example.com?secret=BASE32SECRET&issuer=MyApp&digits=6&period=30
+```
+
+```python
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def build_totp_url(self, user, secret):
+        url = super().build_totp_url(user, secret)
+        # Add custom parameters
+        return url + "&custom_param=value"
+```
+
+### `build_totp_svg(url)`
+
+**Source:** `allauth/mfa/adapter.py:88`
+
+Generates SVG QR code from TOTP URL.
+
+**Parameters:**
+- `url` (`str`) - TOTP URL to encode
+
+**Returns:** `str` - SVG markup as string
+
+**Requirements:** Requires `qrcode` package with SVG support.
+
+```python
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def build_totp_svg(self, url):
+        # Use a different QR code library
+        import custom_qr_library
+        return custom_qr_library.generate_svg(url)
+```
+
+## Encryption Methods
+
+### `encrypt(text)`
+
+**Source:** `allauth/mfa/adapter.py:105`
+
+Encrypts secrets before storing in the database.
+
+**Parameters:**
+- `text` (`str`) - Plain text to encrypt
+
+**Returns:** `str` - Encrypted text
+
+**Default behavior:** Returns text unchanged (no encryption).
+
+**Security Note:** Override this method to encrypt TOTP secrets and recovery code seeds.
+
+```python
+from cryptography.fernet import Fernet
+
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def encrypt(self, text):
+        from django.conf import settings
+        f = Fernet(settings.MFA_ENCRYPTION_KEY)
+        return f.encrypt(text.encode()).decode()
+    
+    def decrypt(self, encrypted_text):
+        from django.conf import settings
+        f = Fernet(settings.MFA_ENCRYPTION_KEY)
+        return f.decrypt(encrypted_text.encode()).decode()
+```
+
+### `decrypt(encrypted_text)`
+
+**Source:** `allauth/mfa/adapter.py:112`
+
+Decrypts secrets retrieved from the database.
+
+**Parameters:**
+- `encrypted_text` (`str`) - Encrypted text
+
+**Returns:** `str` - Decrypted plain text
+
+**Default behavior:** Returns text unchanged.
+
+## Authorization Methods
+
+### `can_delete_authenticator(authenticator)`
+
+**Source:** `allauth/mfa/adapter.py:117`
+
+Determines if an authenticator can be deleted.
+
+**Parameters:**
+- `authenticator` (`Authenticator`) - The authenticator to check
+
+**Returns:** `bool` - True if deletion is allowed
+
+**Default behavior:** Always returns True.
+
+```python
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def can_delete_authenticator(self, authenticator):
+        # Prevent deletion if user only has one authenticator
+        from allauth.mfa.models import Authenticator
+        count = Authenticator.objects.filter(
+            user=authenticator.user,
+            type__in=[Authenticator.Type.TOTP, Authenticator.Type.WEBAUTHN]
+        ).count()
+        return count > 1
+```
+
+### `is_mfa_enabled(user, types=None)`
+
+**Source:** `allauth/mfa/adapter.py:123`
+
+Checks if user has MFA enabled.
+
+**Parameters:**
+- `user` - User instance
+- `types` (`Optional[List]`) - List of authenticator types to check
+
+**Returns:** `bool` - True if user has MFA enabled
+
+```python
+from allauth.mfa.adapter import get_adapter
+from allauth.mfa.models import Authenticator
+
+adapter = get_adapter()
+if adapter.is_mfa_enabled(user, types=[Authenticator.Type.TOTP]):
+    print("User has TOTP enabled")
+```
+
+## WebAuthn Methods
+
+### `get_public_key_credential_rp_entity()`
+
+**Source:** `allauth/mfa/adapter.py:146`
+
+Returns the Relying Party entity for WebAuthn.
+
+**Returns:** `Dict[str, str]` - Dictionary with `id` and `name` keys
+
+**Default behavior:**
+```python
+{
+    "id": "example.com",  # Domain without port
+    "name": "My Site Name"
+}
+```
+
+```python
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def get_public_key_credential_rp_entity(self):
+        return {
+            "id": "myapp.com",
+            "name": "My Application"
+        }
+```
+
+### `get_public_key_credential_user_entity(user)`
+
+**Source:** `allauth/mfa/adapter.py:153`
+
+Returns the user entity for WebAuthn credential creation.
+
+**Parameters:**
+- `user` - User instance
+
+**Returns:** `dict` - Dictionary with `id`, `display_name`, and `name` keys
+
+**Default behavior:**
+```python
+{
+    "id": b"user-pk-as-bytes",
+    "display_name": "John Doe",
+    "name": "john@example.com"
+}
+```
+
+```python
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def get_public_key_credential_user_entity(self, user):
+        return {
+            "id": str(user.pk).encode('utf8'),
+            "display_name": user.get_full_name(),
+            "name": user.username
+        }
+```
+
+## Naming Methods
+
+### `generate_authenticator_name(user, type)`
+
+**Source:** `allauth/mfa/adapter.py:134`
+
+Generates a default name for new authenticators (primarily for WebAuthn).
+
+**Parameters:**
+- `user` - User instance
+- `type` (`Authenticator.Type`) - Type of authenticator
+
+**Returns:** `str` - Generated name
+
+**Default behavior:**
+- First key: "Master key"
+- Second key: "Backup key"
+- Additional keys: "Key nr. 3", "Key nr. 4", etc.
+
+```python
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def generate_authenticator_name(self, user, type):
+        from allauth.mfa.models import Authenticator
+        count = Authenticator.objects.filter(user=user, type=type).count()
+        return f"{user.username}'s Key #{count + 1}"
+```
+
+## Notification Methods
+
+### `send_notification_mail()`
+
+**Source:** `allauth/mfa/adapter.py:120`
+
+Sends notification emails for MFA events.
+
+**Default behavior:** Delegates to the account adapter's `send_notification_mail()` method.
+
+## Helper Functions
+
+### `get_adapter()`
+
+**Source:** `allauth/mfa/adapter.py:161`
+
+Returns the configured MFA adapter instance.
+
+**Returns:** Configured `DefaultMFAAdapter` subclass instance
+
+```python
+from allauth.mfa.adapter import get_adapter
+
+adapter = get_adapter()
+issuer = adapter.get_totp_issuer()
+```
+
+## Complete Custom Adapter Example
+
+```python
+# myapp/adapters.py
+from allauth.mfa.adapter import DefaultMFAAdapter
+from cryptography.fernet import Fernet
+from django.conf import settings
+
+class CustomMFAAdapter(DefaultMFAAdapter):
+    """Custom MFA adapter with encryption and custom policies."""
+    
+    def get_totp_issuer(self):
+        return "My Company"
+    
+    def get_totp_label(self, user):
+        return f"{user.email} - {settings.SITE_NAME}"
+    
+    def encrypt(self, text):
+        f = Fernet(settings.MFA_ENCRYPTION_KEY)
+        return f.encrypt(text.encode()).decode()
+    
+    def decrypt(self, encrypted_text):
+        f = Fernet(settings.MFA_ENCRYPTION_KEY)
+        return f.decrypt(encrypted_text.encode()).decode()
+    
+    def can_delete_authenticator(self, authenticator):
+        # Require at least one authenticator
+        from allauth.mfa.models import Authenticator
+        
+        remaining = Authenticator.objects.filter(
+            user=authenticator.user
+        ).exclude(
+            pk=authenticator.pk,
+            type=Authenticator.Type.RECOVERY_CODES
+        ).count()
+        
+        return remaining > 0
+    
+    def get_public_key_credential_rp_entity(self):
+        return {
+            "id": settings.WEBAUTHN_RP_ID,
+            "name": settings.WEBAUTHN_RP_NAME
+        }
+```
+
+## Settings Integration
+
+```python
+# settings.py
+MFA_ADAPTER = 'myapp.adapters.CustomMFAAdapter'
+
+# TOTP Configuration
+MFA_TOTP_ISSUER = 'My Company'
+MFA_TOTP_PERIOD = 30
+MFA_TOTP_DIGITS = 6
+MFA_TOTP_TOLERANCE = 1
+
+# Recovery Codes
+MFA_RECOVERY_CODE_COUNT = 10
+MFA_RECOVERY_CODE_DIGITS = 8
+
+# WebAuthn Configuration
+MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = False  # Only True for local dev
+WEBAUTHN_RP_ID = 'myapp.com'
+WEBAUTHN_RP_NAME = 'My Application'
+
+# Encryption key for secrets (generate with Fernet.generate_key())
+MFA_ENCRYPTION_KEY = b'your-fernet-key-here'
+```

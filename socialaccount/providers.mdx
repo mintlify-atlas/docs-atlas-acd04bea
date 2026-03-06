@@ -1,0 +1,607 @@
+---
+title: Supported Providers
+description: Complete list of 100+ authentication providers supported by django-allauth
+---
+
+## Overview
+
+django-allauth supports **100+ authentication providers** across multiple protocols including OAuth 1.0a, OAuth 2.0, OpenID Connect, and SAML 2.0. Each provider can be configured independently with custom scopes, authentication parameters, and behaviors.
+
+## Popular Providers
+
+<CardGroup cols={3}>
+  <Card title="Google" icon="google" href="#google">
+    OAuth2 - Profile, email, calendar, drive
+  </Card>
+  <Card title="GitHub" icon="github" href="#github">
+    OAuth2 - User profile, repositories, organizations
+  </Card>
+  <Card title="Facebook" icon="facebook" href="#facebook">
+    OAuth2 - Profile, email, friends
+  </Card>
+  <Card title="Microsoft" icon="microsoft" href="#microsoft">
+    OAuth2 - Azure AD, Office 365
+  </Card>
+  <Card title="Apple" icon="apple" href="#apple">
+    OAuth2 - Sign in with Apple
+  </Card>
+  <Card title="Twitter" icon="twitter" href="#twitter">
+    OAuth2 - Profile, tweets
+  </Card>
+  <Card title="LinkedIn" icon="linkedin" href="#linkedin">
+    OAuth2 - Profile, connections
+  </Card>
+  <Card title="Amazon" icon="amazon" href="#amazon">
+    OAuth2 - Login with Amazon
+  </Card>
+  <Card title="GitLab" icon="gitlab" href="#gitlab">
+    OAuth2 - Self-hosted & SaaS
+  </Card>
+</CardGroup>
+
+## All Providers (A-Z)
+
+<AccordionGroup>
+  <Accordion title="Social & Communication (30+)">
+    <CardGroup cols={4}>
+      <Card title="Discord" icon="discord">Voice, text, and video</Card>
+      <Card title="Facebook" icon="facebook">Social network</Card>
+      <Card title="Instagram" icon="instagram">Photo sharing</Card>
+      <Card title="Kakao" icon="comment">Korean messaging</Card>
+      <Card title="Line" icon="comment">Asian messaging</Card>
+      <Card title="LinkedIn" icon="linkedin">Professional network</Card>
+      <Card title="Reddit" icon="reddit">Discussion platform</Card>
+      <Card title="Slack" icon="slack">Team communication</Card>
+      <Card title="Snapchat" icon="snapchat">Multimedia messaging</Card>
+      <Card title="Telegram" icon="telegram">Messaging platform</Card>
+      <Card title="TikTok" icon="music">Short video</Card>
+      <Card title="Tumblr" icon="tumblr">Microblogging</Card>
+      <Card title="Twitter" icon="twitter">Social media</Card>
+      <Card title="Twitch" icon="twitch">Game streaming</Card>
+      <Card title="Vimeo" icon="vimeo">Video platform</Card>
+      <Card title="VK" icon="users">Russian social</Card>
+      <Card title="Weibo" icon="users">Chinese social</Card>
+      <Card title="Weixin" icon="wechat">WeChat platform</Card>
+      <Card title="WhatsApp" icon="whatsapp">Messaging</Card>
+      <Card title="Zoom" icon="video">Video conferencing</Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="Developer & Code Hosting (10+)">
+    <CardGroup cols={4}>
+      <Card title="Bitbucket" icon="bitbucket">Git hosting</Card>
+      <Card title="Gitea" icon="code-branch">Self-hosted Git</Card>
+      <Card title="GitHub" icon="github">Code hosting</Card>
+      <Card title="GitLab" icon="gitlab">DevOps platform</Card>
+      <Card title="Stack Exchange" icon="stack-overflow">Q&A network</Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="Enterprise SSO & Identity (15+)">
+    <CardGroup cols={4}>
+      <Card title="Auth0" icon="lock">Identity platform</Card>
+      <Card title="Authentiq" icon="shield">Identity provider</Card>
+      <Card title="Atlassian" icon="atlassian">Jira, Confluence</Card>
+      <Card title="Azure AD" icon="microsoft">Microsoft identity</Card>
+      <Card title="Keycloak" icon="key">Open source IAM</Card>
+      <Card title="LemonLDAP" icon="lemon">SSO framework</Card>
+      <Card title="NetIQ" icon="shield">Access management</Card>
+      <Card title="Okta" icon="lock">Identity service</Card>
+      <Card title="SAML" icon="certificate">Enterprise SSO</Card>
+      <Card title="OpenID Connect" icon="openid">Modern SSO</Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="Cloud & Productivity (20+)">
+    <CardGroup cols={4}>
+      <Card title="Amazon" icon="amazon">AWS services</Card>
+      <Card title="Box" icon="box">Cloud storage</Card>
+      <Card title="DigitalOcean" icon="water">Cloud hosting</Card>
+      <Card title="Dropbox" icon="dropbox">File storage</Card>
+      <Card title="Evernote" icon="note">Note taking</Card>
+      <Card title="Google" icon="google">Gmail, Drive, Calendar</Card>
+      <Card title="HubSpot" icon="hubspot">CRM platform</Card>
+      <Card title="Microsoft" icon="microsoft">Office 365, OneDrive</Card>
+      <Card title="Nextcloud" icon="cloud">Self-hosted cloud</Card>
+      <Card title="Notion" icon="notion">Workspace</Card>
+      <Card title="Salesforce" icon="salesforce">CRM platform</Card>
+      <Card title="Shopify" icon="shopify">E-commerce</Card>
+      <Card title="Trello" icon="trello">Project management</Card>
+      <Card title="Zoho" icon="building">Business suite</Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="Financial & Fintech (8+)">
+    <CardGroup cols={4}>
+      <Card title="Coinbase" icon="bitcoin">Cryptocurrency</Card>
+      <Card title="PayPal" icon="paypal">Payments</Card>
+      <Card title="Questrade" icon="chart-line">Trading platform</Card>
+      <Card title="QuickBooks" icon="calculator">Accounting</Card>
+      <Card title="Robinhood" icon="stock">Trading app</Card>
+      <Card title="Stripe" icon="stripe">Payment processing</Card>
+      <Card title="YNAB" icon="money-bill">Budget app</Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="Fitness & Health (5+)">
+    <CardGroup cols={4}>
+      <Card title="23andMe" icon="dna">Genetic testing</Card>
+      <Card title="Strava" icon="running">Fitness tracking</Card>
+      <Card title="TrainingPeaks" icon="chart-line">Athletic training</Card>
+      <Card title="Wahoo" icon="bicycle">Fitness devices</Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="Media & Entertainment (10+)">
+    <CardGroup cols={4}>
+      <Card title="Flickr" icon="flickr">Photo sharing</Card>
+      <Card title="Pinterest" icon="pinterest">Visual discovery</Card>
+      <Card title="SoundCloud" icon="soundcloud">Audio streaming</Card>
+      <Card title="Spotify" icon="spotify">Music streaming</Card>
+      <Card title="Steam" icon="steam">Gaming platform</Card>
+      <Card title="Untappd" icon="beer">Beer tracking</Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="Research & Academic (8+)">
+    <CardGroup cols={4}>
+      <Card title="Agave" icon="server">Research computing</Card>
+      <Card title="CERN" icon="atom">Research organization</Card>
+      <Card title="CILogon" icon="graduation-cap">Academic identity</Card>
+      <Card title="Globus" icon="globe">Research data</Card>
+      <Card title="JupyterHub" icon="chart-network">Notebooks</Card>
+      <Card title="ORCID" icon="id-card">Researcher ID</Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="Regional & Localized (10+)">
+    <CardGroup cols={4}>
+      <Card title="Baidu" icon="search">Chinese search</Card>
+      <Card title="Daum" icon="building">Korean portal</Card>
+      <Card title="Draugiem" icon="users">Latvian social</Card>
+      <Card title="Kakao" icon="comment">Korean platform</Card>
+      <Card title="Line" icon="comment">Asian messaging</Card>
+      <Card title="Mail.ru" icon="envelope">Russian email</Card>
+      <Card title="Naver" icon="search">Korean search</Card>
+      <Card title="Odnoklassniki" icon="users">Russian social</Card>
+      <Card title="Yandex" icon="search">Russian search</Card>
+    </CardGroup>
+  </Accordion>
+
+  <Accordion title="Other Providers (20+)">
+    <CardGroup cols={4}>
+      <Card title="AngelList" icon="angel">Startup platform</Card>
+      <Card title="Asana" icon="tasks">Task management</Card>
+      <Card title="Basecamp" icon="mountain">Project management</Card>
+      <Card title="Battle.net" icon="gamepad">Blizzard gaming</Card>
+      <Card title="Clever" icon="graduation-cap">Education platform</Card>
+      <Card title="Dataporten" icon="building">Norwegian education</Card>
+      <Card title="DingTalk" icon="building">Enterprise communication</Card>
+      <Card title="Discogs" icon="compact-disc">Music database</Card>
+      <Card title="Doximity" icon="user-md">Medical network</Card>
+      <Card title="Drip" icon="tint">Email marketing</Card>
+      <Card title="Dwolla" icon="money-bill">Payment API</Card>
+      <Card title="Edmodo" icon="school">Education platform</Card>
+      <Card title="edX" icon="graduation-cap">Online learning</Card>
+      <Card title="Eventbrite" icon="calendar">Event management</Card>
+      <Card title="EVE Online" icon="space-shuttle">Gaming</Card>
+      <Card title="Exist" icon="chart-line">Life tracking</Card>
+      <Card title="Feedly" icon="rss">RSS reader</Card>
+      <Card title="Feishu" icon="building">Lark platform</Card>
+      <Card title="Figma" icon="pen-tool">Design tool</Card>
+      <Card title="500px" icon="camera">Photography</Card>
+      <Card title="Frontier" icon="rocket">Elite Dangerous</Card>
+      <Card title="Firefox Accounts" icon="firefox">Mozilla identity</Card>
+      <Card title="Gumroad" icon="shopping-cart">Creator platform</Card>
+      <Card title="Lichess" icon="chess">Chess platform</Card>
+      <Card title="Mailchimp" icon="mailchimp">Email marketing</Card>
+      <Card title="Mailcow" icon="envelope">Email server</Card>
+      <Card title="MediaWiki" icon="wikipedia-w">Wiki platform</Card>
+      <Card title="Meetup" icon="users">Event platform</Card>
+      <Card title="Miro" icon="chalkboard">Collaboration</Card>
+      <Card title="OpenStreetMap" icon="map">Mapping platform</Card>
+      <Card title="Patreon" icon="patreon">Creator support</Card>
+      <Card title="Pocket" icon="bookmark">Read later</Card>
+      <Card title="ShareFile" icon="file">File sharing</Card>
+      <Card title="Stocktwits" icon="chart-line">Stock social</Card>
+      <Card title="WindowsLive" icon="windows">Microsoft services</Card>
+      <Card title="Xing" icon="briefcase">Professional network</Card>
+      <Card title="Yahoo" icon="yahoo">Yahoo services</Card>
+    </CardGroup>
+  </Accordion>
+</AccordionGroup>
+
+## Protocol Categories
+
+### OAuth 2.0 Providers
+
+Most modern providers use OAuth 2.0. These require:
+- Client ID and secret from provider's developer portal
+- Redirect URI configuration
+- Optional scope configuration
+
+**Popular OAuth2 providers**: Google, GitHub, Facebook, Microsoft, Twitter (v2), LinkedIn, Amazon
+
+### OAuth 1.0a Providers
+
+Legacy OAuth protocol, still used by some providers:
+
+**OAuth1 providers**: Twitter (original), Flickr, Discogs
+
+### OpenID Connect (OIDC)
+
+Modern identity layer built on OAuth 2.0:
+- Standardized user info endpoint
+- ID tokens with user claims
+- Discovery via .well-known endpoints
+- Support for multiple independent providers
+
+**Configuration**:
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'openid_connect': {
+        'APPS': [
+            {
+                'provider_id': 'my-sso',
+                'name': 'Company SSO',
+                'client_id': 'client-id',
+                'secret': 'client-secret',
+                'settings': {
+                    'server_url': 'https://sso.company.com',
+                },
+            },
+        ],
+    }
+}
+```
+
+### SAML 2.0
+
+Enterprise SSO protocol:
+- XML-based authentication
+- Support for multiple Identity Providers
+- Complex attribute mapping
+- Metadata exchange
+
+**Installation**:
+```bash
+pip install "django-allauth[saml]"
+```
+
+**Configuration**:
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'saml': {
+        'APPS': [
+            {
+                'name': 'Company SAML',
+                'provider_id': 'urn:company.com',
+                'client_id': 'company-slug',
+                'settings': {
+                    'idp': {
+                        'entity_id': 'urn:company.com',
+                        'metadata_url': 'https://company.com/saml/metadata',
+                    },
+                },
+            },
+        ],
+    }
+}
+```
+
+## Provider Setup Guide
+
+### 1. Add to INSTALLED_APPS
+
+```python
+INSTALLED_APPS = [
+    # ...
+    'allauth.socialaccount.providers.google',
+    'allauth.socialaccount.providers.github',
+    # Add more providers as needed
+]
+```
+
+### 2. Register App with Provider
+
+Each provider requires app registration:
+
+1. Visit provider's developer portal
+2. Create new OAuth application
+3. Configure redirect URI: `https://yourdomain.com/accounts/{provider}/login/callback/`
+4. Note client ID and secret
+
+### 3. Configure in Django
+
+Settings-based:
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'provider_name': {
+        'APPS': [
+            {
+                'client_id': 'your-client-id',
+                'secret': 'your-secret',
+            },
+        ],
+    }
+}
+```
+
+Or via Django admin at `/admin/socialaccount/socialapp/`
+
+## Provider-Specific Guides
+
+### Google
+
+**Developer Console**: https://console.developers.google.com/
+
+**Configuration**:
+```python
+INSTALLED_APPS = [
+    'allauth.socialaccount.providers.google',
+]
+
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APPS': [
+            {
+                'client_id': 'your-client-id.apps.googleusercontent.com',
+                'secret': 'your-client-secret',
+            },
+        ],
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {
+            'access_type': 'online',
+        },
+        'OAUTH_PKCE_ENABLED': True,
+    }
+}
+```
+
+**Redirect URI**: `https://yourdomain.com/accounts/google/login/callback/`
+
+**One Tap Sign-In**:
+```html
+<script src="//accounts.google.com/gsi/client" async></script>
+<div id="g_id_onload"
+     data-client_id="your-client-id.apps.googleusercontent.com"
+     data-login_uri="{% url 'google_login_by_token' %}">
+</div>
+```
+
+### GitHub
+
+**Developer Settings**: https://github.com/settings/applications/new
+
+**Configuration**:
+```python
+INSTALLED_APPS = [
+    'allauth.socialaccount.providers.github',
+]
+
+SOCIALACCOUNT_PROVIDERS = {
+    'github': {
+        'APPS': [
+            {
+                'client_id': 'your-github-client-id',
+                'secret': 'your-github-secret',
+            },
+        ],
+        'SCOPE': ['user', 'repo', 'read:org'],
+        'VERIFIED_EMAIL': True,
+    }
+}
+```
+
+**Redirect URI**: `https://yourdomain.com/accounts/github/login/callback/`
+
+**GitHub Enterprise**:
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'github': {
+        'GITHUB_URL': 'https://github.company.com',
+    }
+}
+```
+
+### Facebook
+
+**Developer Portal**: https://developers.facebook.com/
+
+**Configuration**:
+```python
+INSTALLED_APPS = [
+    'allauth.socialaccount.providers.facebook',
+]
+
+SOCIALACCOUNT_PROVIDERS = {
+    'facebook': {
+        'APPS': [
+            {
+                'client_id': 'your-app-id',
+                'secret': 'your-app-secret',
+            },
+        ],
+        'METHOD': 'oauth2',
+        'SCOPE': ['email', 'public_profile'],
+        'FIELDS': [
+            'id',
+            'email',
+            'name',
+            'first_name',
+            'last_name',
+            'verified',
+        ],
+        'VERIFIED_EMAIL': False,
+    }
+}
+```
+
+### Microsoft / Azure AD
+
+**Azure Portal**: https://portal.azure.com/
+
+**Configuration**:
+```python
+INSTALLED_APPS = [
+    'allauth.socialaccount.providers.microsoft',
+]
+
+SOCIALACCOUNT_PROVIDERS = {
+    'microsoft': {
+        'APPS': [
+            {
+                'client_id': 'your-application-id',
+                'secret': 'your-client-secret',
+            },
+        ],
+        'TENANT': 'common',  # or your tenant ID
+    }
+}
+```
+
+### Apple
+
+**Developer Portal**: https://developer.apple.com/
+
+**Configuration**:
+```python
+INSTALLED_APPS = [
+    'allauth.socialaccount.providers.apple',
+]
+
+SOCIALACCOUNT_PROVIDERS = {
+    'apple': {
+        'APPS': [
+            {
+                'client_id': 'com.yourcompany.service',
+                'secret': 'your-secret',
+                'key': 'your-key-id',
+                'settings': {
+                    'certificate_key': '''-----BEGIN PRIVATE KEY-----
+Your private key here
+-----END PRIVATE KEY-----''',
+                },
+            },
+        ],
+    }
+}
+```
+
+### Twitter (OAuth2)
+
+**Developer Portal**: https://developer.twitter.com/
+
+**Configuration**:
+```python
+INSTALLED_APPS = [
+    'allauth.socialaccount.providers.twitter_oauth2',
+]
+
+SOCIALACCOUNT_PROVIDERS = {
+    'twitter_oauth2': {
+        'APPS': [
+            {
+                'client_id': 'your-client-id',
+                'secret': 'your-client-secret',
+            },
+        ],
+    }
+}
+```
+
+## Common Scopes Reference
+
+### Google Scopes
+- `profile`: Basic profile information
+- `email`: Email address
+- `openid`: OpenID Connect
+- `https://www.googleapis.com/auth/calendar`: Calendar access
+- `https://www.googleapis.com/auth/drive`: Drive access
+
+### GitHub Scopes
+- `user`: Read user profile
+- `user:email`: Access email addresses
+- `repo`: Full repository access
+- `read:org`: Read organization data
+- `gist`: Gist access
+
+### Facebook Permissions
+- `public_profile`: Basic profile
+- `email`: Email address
+- `user_friends`: Friends list
+- `user_birthday`: Birthday
+
+### Microsoft Scopes
+- `openid`: OpenID Connect
+- `profile`: User profile
+- `email`: Email address
+- `User.Read`: Read user profile
+- `offline_access`: Refresh tokens
+
+## Testing Providers
+
+### Development Redirect URIs
+
+For local testing:
+- `http://127.0.0.1:8000/accounts/{provider}/login/callback/`
+- `http://localhost:8000/accounts/{provider}/login/callback/`
+
+### Production Redirect URIs
+
+- `https://yourdomain.com/accounts/{provider}/login/callback/`
+- `https://www.yourdomain.com/accounts/{provider}/login/callback/`
+
+<Warning>
+  Configure both HTTP and HTTPS redirect URIs in provider settings if needed for development vs production.
+</Warning>
+
+## Template Usage
+
+### Login Links
+
+```html
+{% load socialaccount %}
+
+<a href="{% provider_login_url 'google' %}">
+  Login with Google
+</a>
+
+<a href="{% provider_login_url 'github' %}">
+  Login with GitHub
+</a>
+```
+
+### With Next Parameter
+
+```html
+{% load socialaccount %}
+
+<a href="{% provider_login_url 'google' next='/dashboard/' %}">
+  Login with Google
+</a>
+```
+
+### Display Connected Accounts
+
+```html
+{% load socialaccount %}
+
+{% get_social_accounts user as accounts %}
+
+{% for account in accounts %}
+  <p>Connected: {{ account.provider }} - {{ account }}</p>
+{% endfor %}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/socialaccount/configuration">
+    Detailed configuration options for providers
+  </Card>
+  
+  <Card title="Advanced Usage" icon="code" href="/socialaccount/advanced">
+    Customize scopes, adapters, and provider behavior
+  </Card>
+</CardGroup>

@@ -1,0 +1,678 @@
+---
+title: Advanced Social Account Usage
+description: Customize adapters, scopes, user creation, and provider behavior
+---
+
+## Adapter Customization
+
+The social account adapter allows you to customize core behaviors throughout the authentication flow. Create a custom adapter by subclassing `DefaultSocialAccountAdapter`.
+
+### Creating a Custom Adapter
+
+**myapp/adapters.py**:
+```python
+from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def is_open_for_signup(self, request, socialaccount):
+        """
+        Control whether new signups are allowed.
+        Return False to disable social signups.
+        """
+        return True
+    
+    def new_user(self, request, sociallogin):
+        """
+        Instantiate a new User instance.
+        Override to use a custom user model or set defaults.
+        """
+        user = super().new_user(request, sociallogin)
+        # Set custom defaults
+        user.is_active = True
+        return user
+    
+    def save_user(self, request, sociallogin, form=None):
+        """
+        Save the user instance.
+        Override to add custom logic before/after saving.
+        """
+        user = super().save_user(request, sociallogin, form)
+        # Add custom logic
+        return user
+    
+    def populate_user(self, request, sociallogin, data):
+        """
+        Populate user instance with data from provider.
+        
+        Args:
+            data: Dictionary with common fields (first_name, last_name, 
+                  email, username, name)
+        """
+        user = super().populate_user(request, sociallogin, data)
+        
+        # Add custom field mapping
+        if 'company' in sociallogin.account.extra_data:
+            user.company = sociallogin.account.extra_data['company']
+        
+        return user
+    
+    def get_connect_redirect_url(self, request, socialaccount):
+        """
+        Return URL to redirect to after connecting a social account.
+        """
+        return '/dashboard/accounts/'
+```
+
+**settings.py**:
+```python
+SOCIALACCOUNT_ADAPTER = 'myapp.adapters.MySocialAccountAdapter'
+```
+
+## User Creation and Population
+
+### Control Signup Availability
+
+Restrict signups based on provider, domain, or other criteria:
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def is_open_for_signup(self, request, socialaccount):
+        # Only allow signups from Google
+        if socialaccount.provider != 'google':
+            return False
+        
+        # Only allow company email domains
+        email = socialaccount.account.extra_data.get('email', '')
+        if not email.endswith('@company.com'):
+            return False
+        
+        return True
+```
+
+### Custom User Field Mapping
+
+Map provider-specific data to user fields:
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def populate_user(self, request, sociallogin, data):
+        user = super().populate_user(request, sociallogin, data)
+        
+        provider = sociallogin.account.provider
+        extra_data = sociallogin.account.extra_data
+        
+        if provider == 'github':
+            user.bio = extra_data.get('bio', '')
+            user.location = extra_data.get('location', '')
+            user.website = extra_data.get('blog', '')
+        
+        elif provider == 'google':
+            user.locale = extra_data.get('locale', 'en')
+            user.avatar_url = extra_data.get('picture', '')
+        
+        elif provider == 'linkedin':
+            user.headline = extra_data.get('headline', '')
+        
+        return user
+```
+
+### Auto-Assign Roles Based on Provider
+
+```python
+from django.contrib.auth.models import Group
+
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def save_user(self, request, sociallogin, form=None):
+        user = super().save_user(request, sociallogin, form)
+        
+        # Assign role based on provider
+        if sociallogin.account.provider == 'google':
+            group = Group.objects.get(name='Google Users')
+            user.groups.add(group)
+        
+        # Assign role based on email domain
+        email = user.email
+        if email.endswith('@company.com'):
+            group = Group.objects.get(name='Staff')
+            user.groups.add(group)
+        
+        return user
+```
+
+## Custom Redirects
+
+### Provider-Specific Redirects
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def get_connect_redirect_url(self, request, socialaccount):
+        """
+        Called after successfully connecting a social account.
+        """
+        if socialaccount.provider == 'github':
+            return '/dashboard/github-connected/'
+        elif socialaccount.provider == 'google':
+            return '/dashboard/google-connected/'
+        return '/dashboard/accounts/'
+```
+
+### Dynamic Redirects Based on User Type
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def get_login_redirect_url(self, request):
+        """
+        Called after successful social login.
+        """
+        user = request.user
+        
+        # Redirect based on user type
+        if user.is_staff:
+            return '/admin/dashboard/'
+        elif user.groups.filter(name='Premium').exists():
+            return '/premium/dashboard/'
+        else:
+            return '/dashboard/'
+```
+
+## Customizing Provider Scopes
+
+### Request Additional Scopes
+
+Most providers support custom scopes for accessing additional data:
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': [
+            'profile',
+            'email',
+            'https://www.googleapis.com/auth/calendar.readonly',
+            'https://www.googleapis.com/auth/drive.readonly',
+        ],
+    },
+    'github': {
+        'SCOPE': [
+            'user',
+            'user:email',
+            'repo',
+            'read:org',
+            'gist',
+        ],
+    },
+    'microsoft': {
+        'SCOPE': [
+            'openid',
+            'profile',
+            'email',
+            'User.Read',
+            'Calendars.Read',
+            'Mail.Read',
+        ],
+    },
+}
+```
+
+### Finding Default Scopes
+
+To find the default scopes for a provider:
+
+1. Look in `allauth/socialaccount/providers/<provider>/provider.py`
+2. Find the `get_default_scope(self)` method
+
+**Example for Google**:
+```python
+class GoogleProvider(OAuth2Provider):
+    def get_default_scope(self):
+        scope = ['profile']
+        if app_settings.QUERY_EMAIL:
+            scope.append('email')
+        return scope
+```
+
+### Dynamic Scopes
+
+Request different scopes based on context:
+
+```python
+class CustomGoogleProvider(GoogleProvider):
+    id = 'google_custom'
+    
+    def get_scope(self, request):
+        scopes = super().get_scope(request)
+        
+        # Add calendar scope for premium users
+        if request.user.is_authenticated and request.user.is_premium:
+            scopes.append('https://www.googleapis.com/auth/calendar')
+        
+        return scopes
+```
+
+## Customizing Providers
+
+### Subclass an Existing Provider
+
+Create a custom provider variant:
+
+**myapp/providers/google_custom/provider.py**:
+```python
+from allauth.socialaccount.providers.google.provider import GoogleProvider
+
+class GoogleCustomProvider(GoogleProvider):
+    id = 'google_custom'
+    name = 'Google Custom'
+    
+    def get_default_scope(self):
+        # No scopes by default
+        return []
+    
+    def extract_common_fields(self, data):
+        # Custom field extraction
+        fields = super().extract_common_fields(data)
+        fields['nickname'] = data.get('name', '')
+        return fields
+
+provider_classes = [GoogleCustomProvider]
+```
+
+**myapp/providers/google_custom/urls.py**:
+```python
+from allauth.socialaccount.providers.oauth2.urls import default_urlpatterns
+from .provider import GoogleCustomProvider
+
+urlpatterns = default_urlpatterns(GoogleCustomProvider)
+```
+
+**settings.py**:
+```python
+INSTALLED_APPS = [
+    # ...
+    'myapp.providers.google_custom',
+]
+```
+
+### Override Provider URLs
+
+Customize the provider URLs:
+
+```python
+from allauth.socialaccount.providers.google.views import (
+    GoogleOAuth2Adapter,
+    oauth2_login,
+    oauth2_callback,
+)
+from django.urls import path
+
+class CustomGoogleAdapter(GoogleOAuth2Adapter):
+    # Custom adapter logic
+    pass
+
+urlpatterns = [
+    path(
+        'google/login/',
+        oauth2_login,
+        {'adapter_class': CustomGoogleAdapter},
+        name='google_login'
+    ),
+    path(
+        'google/login/callback/',
+        oauth2_callback,
+        {'adapter_class': CustomGoogleAdapter},
+        name='google_callback'
+    ),
+]
+```
+
+## Authentication Parameters
+
+### OAuth2 Authentication Parameters
+
+Pass additional parameters to the authorization endpoint:
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'AUTH_PARAMS': {
+            'access_type': 'offline',  # Request refresh token
+            'prompt': 'consent',       # Force consent screen
+            'hd': 'company.com',       # Limit to domain
+        },
+    },
+    'github': {
+        'AUTH_PARAMS': {
+            'allow_signup': 'false',   # Disable GitHub signups
+        },
+    },
+    'microsoft': {
+        'AUTH_PARAMS': {
+            'prompt': 'select_account',  # Always show account picker
+        },
+    },
+}
+```
+
+### Dynamic Auth Parameters
+
+Set parameters dynamically:
+
+```python
+class CustomGoogleProvider(GoogleProvider):
+    def get_auth_params(self, request, action):
+        params = super().get_auth_params(request, action)
+        
+        # Force consent for premium features
+        if request.GET.get('premium'):
+            params['prompt'] = 'consent'
+            params['access_type'] = 'offline'
+        
+        return params
+```
+
+## Working with OAuth Tokens
+
+### Enable Token Storage
+
+```python
+SOCIALACCOUNT_STORE_TOKENS = True
+```
+
+### Retrieve Access Tokens
+
+```python
+from allauth.socialaccount.models import SocialToken
+
+def get_google_token(user):
+    try:
+        token = SocialToken.objects.get(
+            account__user=user,
+            account__provider='google'
+        )
+        return token.token
+    except SocialToken.DoesNotExist:
+        return None
+```
+
+### Make API Calls
+
+```python
+import requests
+from allauth.socialaccount.models import SocialToken
+
+def get_github_repos(user):
+    token = SocialToken.objects.get(
+        account__user=user,
+        account__provider='github'
+    )
+    
+    headers = {'Authorization': f'token {token.token}'}
+    response = requests.get(
+        'https://api.github.com/user/repos',
+        headers=headers
+    )
+    
+    return response.json()
+```
+
+### Refresh Tokens
+
+```python
+from allauth.socialaccount.models import SocialToken, SocialApp
+from allauth.socialaccount.providers.oauth2.client import OAuth2Client, OAuth2Error
+import requests
+
+def refresh_google_token(user):
+    try:
+        token = SocialToken.objects.get(
+            account__user=user,
+            account__provider='google'
+        )
+        app = token.app
+        
+        # Request new access token
+        response = requests.post(
+            'https://oauth2.googleapis.com/token',
+            data={
+                'client_id': app.client_id,
+                'client_secret': app.secret,
+                'refresh_token': token.token_secret,
+                'grant_type': 'refresh_token',
+            }
+        )
+        
+        data = response.json()
+        
+        # Update stored token
+        token.token = data['access_token']
+        if 'refresh_token' in data:
+            token.token_secret = data['refresh_token']
+        token.save()
+        
+        return token.token
+        
+    except SocialToken.DoesNotExist:
+        return None
+```
+
+## Email Verification
+
+### Trust Provider Email Verification
+
+Mark emails from specific providers as verified:
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'VERIFIED_EMAIL': True,  # Trust Google's verification
+    },
+    'github': {
+        'VERIFIED_EMAIL': True,  # Trust GitHub's verification
+    },
+    'facebook': {
+        'VERIFIED_EMAIL': False,  # Don't trust Facebook
+    },
+}
+```
+
+### Custom Email Verification Logic
+
+```python
+from allauth.account.models import EmailAddress
+
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def save_user(self, request, sociallogin, form=None):
+        user = super().save_user(request, sociallogin, form)
+        
+        # Mark email as verified for specific providers
+        if sociallogin.account.provider in ['google', 'microsoft']:
+            email = user.email
+            EmailAddress.objects.filter(
+                user=user,
+                email=email
+            ).update(verified=True)
+        
+        return user
+```
+
+## Signals and Hooks
+
+django-allauth provides signals for hooking into the authentication flow:
+
+### Available Signals
+
+```python
+from allauth.socialaccount.signals import (
+    pre_social_login,
+    social_account_added,
+    social_account_updated,
+    social_account_removed,
+)
+from django.dispatch import receiver
+
+@receiver(pre_social_login)
+def before_social_login(sender, request, sociallogin, **kwargs):
+    """
+    Called before a social login is processed.
+    Raise an exception to prevent login.
+    """
+    # Check if email is blacklisted
+    email = sociallogin.account.extra_data.get('email')
+    if email and is_blacklisted(email):
+        raise ImmediateHttpResponse(
+            HttpResponse('Email domain not allowed')
+        )
+
+@receiver(social_account_added)
+def after_account_connected(sender, request, sociallogin, **kwargs):
+    """
+    Called after a social account is connected to a user.
+    """
+    user = sociallogin.user
+    provider = sociallogin.account.provider
+    
+    # Log the connection
+    logger.info(f'User {user.id} connected {provider} account')
+    
+    # Award points for connecting account
+    user.points += 10
+    user.save()
+
+@receiver(social_account_updated)
+def after_account_updated(sender, request, sociallogin, **kwargs):
+    """
+    Called when social account data is updated.
+    """
+    # Sync profile data
+    user = sociallogin.user
+    extra_data = sociallogin.account.extra_data
+    
+    if 'avatar_url' in extra_data:
+        user.avatar_url = extra_data['avatar_url']
+        user.save()
+
+@receiver(social_account_removed)
+def after_account_disconnected(sender, request, socialaccount, **kwargs):
+    """
+    Called after a social account is disconnected.
+    """
+    user = socialaccount.user
+    provider = socialaccount.provider
+    
+    logger.info(f'User {user.id} disconnected {provider} account')
+```
+
+### Prevent Login Based on Criteria
+
+```python
+from django.http import HttpResponse
+from allauth.exceptions import ImmediateHttpResponse
+
+@receiver(pre_social_login)
+def check_user_eligibility(sender, request, sociallogin, **kwargs):
+    # Only allow users from specific domain
+    email = sociallogin.account.extra_data.get('email', '')
+    
+    if not email.endswith('@company.com'):
+        raise ImmediateHttpResponse(
+            HttpResponse('Only company employees can sign in', status=403)
+        )
+    
+    # Check against external API
+    if not is_authorized_user(email):
+        raise ImmediateHttpResponse(
+            HttpResponse('User not authorized', status=403)
+        )
+```
+
+## Multi-Tenant Support
+
+### Using Django Sites Framework
+
+Configure different apps per site:
+
+```python
+# Enable sites framework
+INSTALLED_APPS = [
+    'django.contrib.sites',
+    # ...
+]
+
+SITE_ID = 1
+```
+
+Create separate `SocialApp` instances via admin and assign to different sites.
+
+### Custom Tenant Logic
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def get_app(self, request, provider, client_id=None):
+        """
+        Return the appropriate app based on request context.
+        """
+        # Determine tenant from domain
+        tenant = get_tenant_from_request(request)
+        
+        # Get app for this tenant
+        from allauth.socialaccount.models import SocialApp
+        return SocialApp.objects.get(
+            provider=provider,
+            settings__tenant=tenant.id
+        )
+```
+
+## Security Best Practices
+
+### Require HTTPS
+
+```python
+# settings.py
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+```
+
+### Limit Email Authentication
+
+```python
+# Only enable for trusted providers
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'EMAIL_AUTHENTICATION': True,
+    },
+    # Don't enable for less trusted providers
+    'facebook': {
+        'EMAIL_AUTHENTICATION': False,
+    },
+}
+```
+
+### Require POST for Login
+
+```python
+SOCIALACCOUNT_LOGIN_ON_GET = False  # Default, keep it this way
+```
+
+### Enable PKCE for OAuth2
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'OAUTH_PKCE_ENABLED': True,
+    },
+    'github': {
+        'OAUTH_PKCE_ENABLED': True,
+    },
+}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Providers" icon="plug" href="/socialaccount/providers">
+    Browse all 100+ supported providers
+  </Card>
+  
+  <Card title="Configuration" icon="gear" href="/socialaccount/configuration">
+    Complete settings reference
+  </Card>
+</CardGroup>

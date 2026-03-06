@@ -1,97 +1,177 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Django Allauth
+description: Integrated Django framework for authentication, registration, account management, and social login
 ---
 
-## Setting up
+<div style={{
+  background: 'linear-gradient(135deg, #1f262c 0%, #14ad14 100%)',
+  borderRadius: '8px',
+  padding: '48px 32px',
+  marginBottom: '32px',
+  color: '#ffffff'
+}}>
+  <h1 style={{
+    fontSize: '48px',
+    fontWeight: '800',
+    fontFamily: 'Inter, sans-serif',
+    marginBottom: '16px',
+    color: '#ffffff'
+  }}>
+    Django Allauth
+  </h1>
+  <p style={{
+    fontSize: '20px',
+    fontWeight: '400',
+    fontFamily: 'Inter, sans-serif',
+    color: '#eeeeec',
+    maxWidth: '700px'
+  }}>
+    Comprehensive authentication framework for Django supporting local accounts, social login, multi-factor authentication, and more.
+  </p>
+</div>
 
-Get your documentation site up and running in minutes.
+## Welcome to Django Allauth
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+Django Allauth is a powerful, integrated set of Django applications that handles authentication, registration, account management, and third-party (social) account authentication. Battle-tested since 2010 and trusted by thousands of production applications.
 
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Get Started" icon="rocket" href="/quickstart">
+    Install and configure Django Allauth in minutes
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Social Login" icon="users" href="/socialaccount/introduction">
+    Connect 100+ social authentication providers
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Multi-Factor Auth" icon="shield-halved" href="/mfa/introduction">
+    Add TOTP, WebAuthn, and passkey support
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Headless API" icon="code" href="/headless/introduction">
+    Build SPAs and mobile apps with our REST API
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Key Features
 
-Everything you need to create world-class documentation.
+<CardGroup cols={3}>
+  <Card title="Local & Social Auth" icon="key">
+    Seamlessly integrate local username/email authentication with social login providers
+  </Card>
+  <Card title="Enterprise Ready" icon="building">
+    SAML 2.0 and OpenID Connect support for B2B and SSO scenarios
+  </Card>
+  <Card title="Security First" icon="lock">
+    Built-in rate limiting, account enumeration prevention, and security best practices
+  </Card>
+  <Card title="Highly Customizable" icon="sliders">
+    Adapter pattern allows fine-grained control over authentication flows
+  </Card>
+  <Card title="Email Verification" icon="envelope-circle-check">
+    Flexible email verification strategies from optional to mandatory
+  </Card>
+  <Card title="Phone Authentication" icon="mobile">
+    Support for phone number verification and authentication
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Why Choose Django Allauth?
 
-## Need inspiration?
+<Steps>
+  <Step title="Comprehensive">
+    Unlike other solutions that focus only on social authentication or only on local accounts, Django Allauth provides a unified approach to all authentication needs.
+  </Step>
+  
+  <Step title="Battle-Tested">
+    In production since 2010, used by commercial companies worldwide. Subjected to extensive penetration testing and security audits.
+  </Step>
+  
+  <Step title="Developer Friendly">
+    Clean APIs, extensive documentation, and a thriving community. Customize behavior through adapters without forking the codebase.
+  </Step>
+  
+  <Step title="Modern Features">
+    Stay current with passwordless authentication, WebAuthn passkeys, headless API support for SPAs, and identity provider capabilities.
+  </Step>
+</Steps>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Supported Providers
+
+Django Allauth supports **100+ authentication providers** including:
+
+- **OAuth 2.0**: Google, GitHub, Facebook, Microsoft, Apple, Amazon, and many more
+- **OAuth 1.0**: Twitter (legacy), Flickr, Bitbucket
+- **OpenID Connect**: Any OIDC-compatible provider
+- **SAML 2.0**: Enterprise SSO and identity federation
+- **Custom Protocols**: Telegram, Steam, and others
+
+<Note>
+View the complete list of supported providers in the [Providers documentation](/socialaccount/providers).
+</Note>
+
+## Quick Example
+
+Here's how simple it is to add social authentication to your Django project:
+
+```python settings.py
+INSTALLED_APPS = [
+    'django.contrib.sites',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',
+    'allauth.socialaccount.providers.github',
+]
+
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
+SITE_ID = 1
+```
+
+```python urls.py
+from django.urls import path, include
+
+urlpatterns = [
+    path('accounts/', include('allauth.urls')),
+]
+```
+
+That's it! You now have working signup, login, logout, password reset, and social authentication.
+
+<Tip>
+Check out the [Quickstart Guide](/quickstart) for a complete walkthrough.
+</Tip>
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Django Allauth and set up your project
+  </Card>
+  <Card title="Core Concepts" icon="book" href="/concepts/overview">
+    Understand how Django Allauth works
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration/settings">
+    Explore available settings and options
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/account/models">
+    Dive into the complete API documentation
+  </Card>
+</CardGroup>
+
+## Community and Support
+
+<CardGroup cols={2}>
+  <Card title="GitHub" icon="github" href="https://github.com/pennersr/django-allauth">
+    Star the project and contribute on GitHub
+  </Card>
+  <Card title="Stack Overflow" icon="stack-overflow" href="https://stackoverflow.com/questions/tagged/django-allauth">
+    Ask questions with the django-allauth tag
+  </Card>
+  <Card title="Issue Tracker" icon="bug" href="https://codeberg.org/allauth/django-allauth/issues">
+    Report bugs and request features
+  </Card>
+  <Card title="Commercial Support" icon="handshake" href="mailto:info@intenct.nl">
+    Get professional support and custom development
+  </Card>
+</CardGroup>

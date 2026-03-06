@@ -1,0 +1,540 @@
+---
+title: Custom User Models
+description: Configure django-allauth to work with custom user models and authentication fields
+---
+
+## Overview
+
+Django-allauth is designed to work seamlessly with custom user models. This guide covers all configurations needed to use custom user models with different field names, email-only authentication, and username-less setups.
+
+## Understanding Username vs Login Identifier
+
+An important distinction in django-allauth:
+
+- **USERNAME_FIELD** (Django): The unique identifier field on your user model (e.g., `email`, `user_id`, `uuid`)
+- **username** (allauth): The field users type to log in (could be a nickname, handle, or login name)
+
+These are often different. For example, you might use `email` as your `USERNAME_FIELD` but not collect a separate `username` field at all.
+
+## Email-Only Authentication
+
+The most common custom setup uses email as the primary identifier without usernames.
+
+### User Model
+
+```python models.py
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+class User(AbstractUser):
+    # Remove username requirement
+    username = None
+    
+    # Make email the unique identifier
+    email = models.EmailField(unique=True)
+    
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []  # Email is already the USERNAME_FIELD
+    
+    def __str__(self):
+        return self.email
+```
+
+### Configuration
+
+```python settings.py
+# Point to your custom user model
+AUTH_USER_MODEL = 'myapp.User'
+
+# Tell allauth there's no username field
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+
+# Use email for login
+ACCOUNT_LOGIN_METHODS = {'email'}
+
+# Configure signup fields (remove username)
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+
+# Make email required and unique
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_UNIQUE_EMAIL = True
+```
+
+## Username and Email Authentication
+
+Allow users to log in with either username or email.
+
+### User Model
+
+```python models.py
+from django.contrib.auth.models import AbstractUser
+
+class User(AbstractUser):
+    email = models.EmailField(unique=True)
+    
+    # Keep the default USERNAME_FIELD = 'username'
+    
+    def __str__(self):
+        return self.username
+```
+
+### Configuration
+
+```python settings.py
+AUTH_USER_MODEL = 'myapp.User'
+
+# Enable both login methods
+ACCOUNT_LOGIN_METHODS = {'username', 'email'}
+
+# Default signup fields already include username
+ACCOUNT_SIGNUP_FIELDS = ['username*', 'email*', 'password1*', 'password2*']
+
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_UNIQUE_EMAIL = True
+```
+
+## Custom Email Field Name
+
+If your user model uses a different field name for email:
+
+```python models.py
+class User(AbstractBaseUser):
+    email_address = models.EmailField(unique=True)  # Not 'email'
+    
+    USERNAME_FIELD = 'email_address'
+    REQUIRED_FIELDS = []
+```
+
+```python settings.py
+AUTH_USER_MODEL = 'myapp.User'
+
+# Tell allauth which field contains the email
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email_address'
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+
+ACCOUNT_LOGIN_METHODS = {'email'}
+```
+
+## UUID as Primary Key
+
+Using UUID instead of integer ID:
+
+```python models.py
+import uuid
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+class User(AbstractUser):
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False
+    )
+    username = None
+    email = models.EmailField(unique=True)
+    
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+```
+
+```python settings.py
+AUTH_USER_MODEL = 'myapp.User'
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email'
+ACCOUNT_LOGIN_METHODS = {'email'}
+```
+
+## Custom Fields in Signup
+
+Add additional fields to the signup process.
+
+### User Model
+
+```python models.py
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+class User(AbstractUser):
+    username = None
+    email = models.EmailField(unique=True)
+    full_name = models.CharField(max_length=255)
+    date_of_birth = models.DateField(null=True, blank=True)
+    accepts_marketing = models.BooleanField(default=False)
+    
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['full_name']
+```
+
+### Custom Signup Form
+
+```python forms.py
+from django import forms
+from allauth.account.forms import SignupForm
+
+class CustomSignupForm(SignupForm):
+    full_name = forms.CharField(
+        max_length=255,
+        label='Full Name',
+        required=True
+    )
+    date_of_birth = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={'type': 'date'})
+    )
+    accepts_marketing = forms.BooleanField(
+        required=False,
+        label='Send me marketing emails'
+    )
+    
+    def signup(self, request, user):
+        """Save additional fields to the user model."""
+        user.full_name = self.cleaned_data['full_name']
+        user.date_of_birth = self.cleaned_data.get('date_of_birth')
+        user.accepts_marketing = self.cleaned_data.get('accepts_marketing', False)
+        user.save()
+        return user
+```
+
+### Configuration
+
+```python settings.py
+ACCOUNT_SIGNUP_FORM_CLASS = 'myapp.forms.CustomSignupForm'
+```
+
+## Profile Model
+
+Store additional user data in a separate profile model:
+
+```python models.py
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+class User(AbstractUser):
+    username = None
+    email = models.EmailField(unique=True)
+    
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+
+class UserProfile(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='profile'
+    )
+    bio = models.TextField(blank=True)
+    avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
+    website = models.URLField(blank=True)
+    
+    def __str__(self):
+        return f"{self.user.email}'s profile"
+
+@receiver(post_save, sender=User)
+def create_user_profile(sender, instance, created, **kwargs):
+    if created:
+        UserProfile.objects.create(user=instance)
+```
+
+```python forms.py
+from allauth.account.forms import SignupForm
+
+class CustomSignupForm(SignupForm):
+    bio = forms.CharField(
+        widget=forms.Textarea,
+        required=False
+    )
+    
+    def signup(self, request, user):
+        # Profile is auto-created by signal
+        user.save()
+        
+        # Update profile with form data
+        user.profile.bio = self.cleaned_data.get('bio', '')
+        user.profile.save()
+        
+        return user
+```
+
+## Adapter Customization
+
+Customize user creation and validation:
+
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def save_user(self, request, user, form, commit=True):
+        """Customize how users are saved during signup."""
+        user = super().save_user(request, user, form, commit=False)
+        
+        # Add custom logic
+        data = form.cleaned_data
+        
+        # Example: Auto-generate display name from email
+        if not hasattr(user, 'username') or not user.username:
+            user.display_name = data['email'].split('@')[0]
+        
+        # Example: Set user as inactive until email verified
+        if self.require_email_verification():
+            user.is_active = False
+        
+        if commit:
+            user.save()
+        return user
+    
+    def clean_email(self, email):
+        """Validate email addresses."""
+        email = super().clean_email(email)
+        
+        # Example: Block certain email domains
+        blocked_domains = ['tempmail.com', 'throwaway.email']
+        domain = email.split('@')[1]
+        if domain in blocked_domains:
+            raise forms.ValidationError(
+                "Email addresses from this domain are not allowed."
+            )
+        
+        return email
+    
+    def is_open_for_signup(self, request):
+        """Control whether signup is allowed."""
+        # Example: Close signups
+        # return False
+        
+        # Example: Invitation-only signups
+        # return 'invitation_code' in request.session
+        
+        return True
+```
+
+```python settings.py
+ACCOUNT_ADAPTER = 'myapp.adapters.MyAccountAdapter'
+```
+
+## Username Generation
+
+If you need usernames but don't want to collect them from users:
+
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+import uuid
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def populate_username(self, request, user):
+        """Auto-generate username if not provided."""
+        if not user.username:
+            # Option 1: Use email prefix
+            email_prefix = user.email.split('@')[0]
+            user.username = self.generate_unique_username([
+                email_prefix,
+                user.email,
+                'user'
+            ])
+            
+            # Option 2: Use UUID
+            # user.username = str(uuid.uuid4())[:30]
+            
+            # Option 3: Use sequential numbers
+            # from django.contrib.auth import get_user_model
+            # User = get_user_model()
+            # count = User.objects.count()
+            # user.username = f"user{count + 1}"
+```
+
+## Multiple User Types
+
+Implement different user types (e.g., customers vs. vendors):
+
+```python models.py
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+class User(AbstractUser):
+    username = None
+    email = models.EmailField(unique=True)
+    
+    class UserType(models.TextChoices):
+        CUSTOMER = 'customer', 'Customer'
+        VENDOR = 'vendor', 'Vendor'
+        ADMIN = 'admin', 'Admin'
+    
+    user_type = models.CharField(
+        max_length=20,
+        choices=UserType.choices,
+        default=UserType.CUSTOMER
+    )
+    
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+```
+
+```python forms.py
+from allauth.account.forms import SignupForm
+from django import forms
+from .models import User
+
+class VendorSignupForm(SignupForm):
+    company_name = forms.CharField(max_length=255)
+    
+    def signup(self, request, user):
+        user.user_type = User.UserType.VENDOR
+        user.save()
+        
+        # Create vendor profile
+        from .models import VendorProfile
+        VendorProfile.objects.create(
+            user=user,
+            company_name=self.cleaned_data['company_name']
+        )
+        
+        return user
+```
+
+```python urls.py
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('signup/customer/', views.customer_signup, name='customer_signup'),
+    path('signup/vendor/', views.vendor_signup, name='vendor_signup'),
+]
+```
+
+## Configuration Reference
+
+### ACCOUNT_USER_MODEL_USERNAME_FIELD
+
+**Default:** `"username"`
+
+The field on your user model that represents the login username. Set to `None` if you don't have a username field.
+
+```python
+# With username
+ACCOUNT_USER_MODEL_USERNAME_FIELD = 'username'
+
+# Without username
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+
+# Custom field name
+ACCOUNT_USER_MODEL_USERNAME_FIELD = 'login_name'
+```
+
+### ACCOUNT_USER_MODEL_EMAIL_FIELD
+
+**Default:** `"email"`
+
+The field on your user model that contains the email address. Set to `None` if you don't have an email field.
+
+```python
+# Default
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email'
+
+# Custom field
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email_address'
+
+# No email
+ACCOUNT_USER_MODEL_EMAIL_FIELD = None
+```
+
+### ACCOUNT_USER_DISPLAY
+
+**Default:** Returns `user.username`
+
+Callable that returns the display name for a user.
+
+```python
+# In settings.py
+ACCOUNT_USER_DISPLAY = 'myapp.utils.get_user_display'
+
+# In myapp/utils.py
+def get_user_display(user):
+    if hasattr(user, 'full_name') and user.full_name:
+        return user.full_name
+    return user.email
+```
+
+## Common Patterns
+
+### Email-Only (No Username)
+
+```python settings.py
+AUTH_USER_MODEL = 'myapp.User'
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email'
+ACCOUNT_LOGIN_METHODS = {'email'}
+ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_UNIQUE_EMAIL = True
+```
+
+### Username or Email Login
+
+```python settings.py
+AUTH_USER_MODEL = 'myapp.User'
+ACCOUNT_LOGIN_METHODS = {'username', 'email'}
+ACCOUNT_SIGNUP_FIELDS = ['username*', 'email*', 'password1*', 'password2*']
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_UNIQUE_EMAIL = True
+```
+
+### Phone-Only Authentication
+
+```python settings.py
+AUTH_USER_MODEL = 'myapp.User'
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_USER_MODEL_EMAIL_FIELD = None
+ACCOUNT_LOGIN_METHODS = {'phone'}
+ACCOUNT_SIGNUP_FIELDS = ['phone*', 'password1*', 'password2*']
+ACCOUNT_ADAPTER = 'myapp.adapters.MyAccountAdapter'  # Must implement phone methods
+```
+
+## Migration Guide
+
+If you're adding allauth to an existing project with a custom user model:
+
+1. **Install allauth** and add to `INSTALLED_APPS`
+
+2. **Configure settings** to match your user model:
+
+```python settings.py
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None  # If no username
+ACCOUNT_USER_MODEL_EMAIL_FIELD = 'email'  # Or your field name
+ACCOUNT_LOGIN_METHODS = {'email'}  # Or your login method
+```
+
+3. **Run migrations**:
+
+```bash
+python manage.py migrate
+```
+
+4. **Sync existing users** with allauth's EmailAddress model:
+
+```python
+from django.contrib.auth import get_user_model
+from allauth.account.models import EmailAddress
+
+User = get_user_model()
+
+for user in User.objects.all():
+    EmailAddress.objects.get_or_create(
+        user=user,
+        email=user.email,
+        defaults={'verified': True, 'primary': True}
+    )
+```
+
+## Best Practices
+
+1. **Set user model early**: Configure `AUTH_USER_MODEL` before first migration
+2. **Match allauth config**: Ensure `ACCOUNT_USER_MODEL_*` settings match your actual model
+3. **Validate early**: Test signup/login flows immediately after configuration
+4. **Use adapter methods**: Override adapter methods rather than modifying allauth code
+5. **Keep it simple**: Start with standard fields, add complexity only when needed

@@ -1,0 +1,333 @@
+---
+title: Breaking Changes
+description: Important breaking changes between major versions of django-allauth
+---
+
+## Overview
+
+This page documents breaking changes that may require code updates when upgrading django-allauth. Always review these changes before upgrading to a new major version.
+
+<Warning>
+Breaking changes can affect your application's functionality. Test thoroughly in a staging environment before deploying to production.
+</Warning>
+
+## Version 65.x
+
+### IP Address Detection (65.14.2)
+
+<Warning>
+**Critical Security Change**
+</Warning>
+
+**What Changed**: The default IP address detection no longer trusts `X-Forwarded-For` header.
+
+**Impact**: Rate limiting may not work correctly if not configured properly.
+
+**Required Action**: Configure IP detection for your deployment architecture.
+
+```python settings.py
+# Choose one of these approaches:
+
+# Option 1: Configure proxy count
+ALLAUTH_TRUSTED_PROXY_COUNT = 1  # Number of proxies in front of Django
+
+# Option 2: Use a trusted header
+ALLAUTH_TRUSTED_CLIENT_IP_HEADER = "HTTP_CF_CONNECTING_IP"
+
+# Option 3: Override in adapter
+class MyAccountAdapter(DefaultAccountAdapter):
+    def get_client_ip(self, request):
+        return request.META.get('HTTP_CF_CONNECTING_IP')
+```
+
+**Migration Path**:
+1. Identify your deployment architecture (direct, behind nginx, behind load balancer, etc.)
+2. Choose the appropriate configuration method
+3. Test rate limiting functionality
+4. Monitor for any IP detection issues
+
+## Version 64.x
+
+### Python 3.7 Support Dropped
+
+**What Changed**: Python 3.8+ is now required.
+
+**Impact**: Applications running on Python 3.7 or earlier cannot use django-allauth 64.x+.
+
+**Required Action**: Upgrade to Python 3.8 or higher before upgrading django-allauth.
+
+### Template System Changes
+
+**What Changed**: Introduction of element-based styling system.
+
+**Impact**: Custom templates may need updates to use the new system.
+
+**Migration Path**:
+
+**Option 1: Adopt New System (Recommended)**
+```python settings.py
+# Use new element-based templates
+TEMPLATES = [
+    {
+        'DIRS': [BASE_DIR / 'templates'],
+        # ...
+    },
+]
+```
+
+Create element overrides:
+```html templates/allauth/elements/button.html
+<button class="btn btn-primary" type="{{ type }}">
+    {{ content }}
+</button>
+```
+
+**Option 2: Continue with Legacy Templates**
+```python settings.py
+# Keep using your existing custom templates
+# No configuration needed if templates already exist
+```
+
+## Version 63.x
+
+### Django 3.2 Support Dropped
+
+**What Changed**: Django 4.2+ is now required.
+
+**Impact**: Projects on Django 3.2 or earlier need to upgrade Django first.
+
+**Required Action**: Upgrade to Django 4.2 LTS before upgrading django-allauth.
+
+## Version 62.x
+
+### Headless API Token Format
+
+**What Changed**: JWT token structure and validation updated.
+
+**Impact**: Existing tokens may need to be refreshed.
+
+**Migration Path**:
+1. Update frontend to handle new token format
+2. Existing tokens remain valid until expiry
+3. New tokens use updated format
+
+## Version 60.x
+
+### MFA Models Changes
+
+**What Changed**: MFA models were restructured for better extensibility.
+
+**Impact**: Custom MFA implementations need updates.
+
+**Required Action**: Run migrations and update custom MFA code.
+
+```bash
+python manage.py migrate allauth
+```
+
+If you have custom MFA authenticators:
+```python
+# Old (59.x)
+from allauth.mfa.models import TOTPDevice
+
+# New (60.x)
+from allauth.mfa.models import Authenticator
+authenticator = Authenticator.objects.filter(
+    user=user,
+    type=Authenticator.Type.TOTP
+).first()
+```
+
+## Common Migration Patterns
+
+### Updating Settings
+
+<Accordion title="Rate Limiting Configuration">
+  
+  **Old Approach (Pre-65.x)**:
+  ```python
+  # Rate limiting worked without explicit IP configuration
+  ACCOUNT_RATE_LIMITS = {
+      "login": "5/m",
+  }
+  ```
+  
+  **New Approach (65.x+)**:
+  ```python
+  # Must configure IP detection
+  ALLAUTH_TRUSTED_PROXY_COUNT = 1
+  
+  ACCOUNT_RATE_LIMITS = {
+      "login": "5/m",
+  }
+  ```
+  
+</Accordion>
+
+<Accordion title="Template Customization">
+  
+  **Old Approach (Pre-64.x)**:
+  ```html templates/account/login.html
+  {% extends "account/base.html" %}
+  {% block content %}
+    <form method="post">
+      {% csrf_token %}
+      {{ form.as_p }}
+      <button type="submit">Login</button>
+    </form>
+  {% endblock %}
+  ```
+  
+  **New Approach (64.x+)**:
+  ```html templates/allauth/layouts/entrance.html
+  {% extends 'allauth/layouts/base.html' %}
+  {% block content %}
+    <div class="container">
+      {% block entrance_content %}{% endblock %}
+    </div>
+  {% endblock %}
+  ```
+  
+  Or use element overrides:
+  ```html templates/allauth/elements/button.html
+  <button class="btn btn-primary" type="{{ type }}">
+    {{ content }}
+  </button>
+  ```
+  
+</Accordion>
+
+### Updating Code
+
+<Accordion title="Adapter Methods">
+  
+  Some adapter methods have been updated. Check if you override any:
+  
+  ```python
+  class MyAccountAdapter(DefaultAccountAdapter):
+      # New in 65.x - must implement if using rate limiting
+      def get_client_ip(self, request):
+          return request.META.get('REMOTE_ADDR')
+      
+      # Updated signature in 64.x
+      def save_user(self, request, user, form, commit=True):
+          # New parameter: commit
+          user = super().save_user(request, user, form, commit=commit)
+          return user
+  ```
+  
+</Accordion>
+
+<Accordion title="Signal Handlers">
+  
+  Signal arguments remain backward compatible, but new parameters added:
+  
+  ```python
+  from allauth.account.signals import user_signed_up
+  
+  @receiver(user_signed_up)
+  def on_user_signed_up(sender, request, user, **kwargs):
+      # Always use **kwargs to handle new parameters in future versions
+      sociallogin = kwargs.get('sociallogin')
+      if sociallogin:
+          # Handle social signup
+          pass
+  ```
+  
+</Accordion>
+
+## Testing for Breaking Changes
+
+### Automated Detection
+
+Add these tests to detect breaking changes:
+
+```python tests/test_compatibility.py
+from django.test import TestCase
+import allauth
+
+class CompatibilityTests(TestCase):
+    def test_version_requirements(self):
+        """Ensure version meets requirements"""
+        import django
+        import sys
+        
+        # Check Python version
+        self.assertGreaterEqual(sys.version_info[:2], (3, 8))
+        
+        # Check Django version
+        django_version = tuple(map(int, django.VERSION[:2]))
+        self.assertGreaterEqual(django_version, (4, 2))
+    
+    def test_required_settings(self):
+        """Check required settings are configured"""
+        from django.conf import settings
+        
+        # Check IP detection is configured (65.x+)
+        has_proxy_config = hasattr(settings, 'ALLAUTH_TRUSTED_PROXY_COUNT')
+        has_header_config = hasattr(settings, 'ALLAUTH_TRUSTED_CLIENT_IP_HEADER')
+        
+        self.assertTrue(
+            has_proxy_config or has_header_config,
+            "Must configure IP detection in 65.x+"
+        )
+```
+
+### Manual Testing
+
+After upgrading, test these critical flows:
+
+<Steps>
+  <Step title="Authentication">
+    - Login with username
+    - Login with email
+    - Social login
+    - MFA authentication
+  </Step>
+  
+  <Step title="Rate Limiting">
+    - Trigger rate limits
+    - Verify IP detection
+    - Check rate limit messages
+  </Step>
+  
+  <Step title="Templates">
+    - Check all authentication pages
+    - Verify custom templates still work
+    - Test responsive design
+  </Step>
+  
+  <Step title="API (if applicable)">
+    - Test headless endpoints
+    - Verify token format
+    - Check CORS configuration
+  </Step>
+</Steps>
+
+## Version Compatibility Matrix
+
+| django-allauth | Python    | Django      | Notes                           |
+|----------------|-----------|-------------|---------------------------------|
+| 65.x           | 3.8+      | 4.2, 5.0, 5.1, 5.2, 6.0 | Current version                 |
+| 64.x           | 3.8+      | 4.2, 5.0, 5.1 | Template system changes       |
+| 63.x           | 3.8+      | 4.2, 5.0    | Django 3.2 support dropped      |
+| 62.x           | 3.7+      | 3.2, 4.0, 4.1 | Last version with Python 3.7  |
+
+## Getting Help
+
+If you encounter issues with breaking changes:
+
+<CardGroup cols={2}>
+  <Card title="Upgrade Guide" icon="arrow-up" href="/migration/upgrade-guide">
+    Step-by-step upgrade instructions
+  </Card>
+  <Card title="Changelog" icon="clock" href="/migration/changelog">
+    Detailed version history
+  </Card>
+  <Card title="Stack Overflow" icon="stack-overflow" href="https://stackoverflow.com/questions/tagged/django-allauth">
+    Ask the community
+  </Card>
+  <Card title="Issue Tracker" icon="bug" href="https://codeberg.org/allauth/django-allauth/issues">
+    Report upgrade issues
+  </Card>
+</CardGroup>

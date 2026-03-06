@@ -1,0 +1,362 @@
+---
+title: Configuration
+description: Configure django-allauth headless settings, token strategies, and client types
+---
+
+This guide covers all configuration options available in django-allauth headless mode.
+
+## Core Settings
+
+### HEADLESS_ONLY
+
+**Default:** `False`
+
+Enables headless-only mode, disabling traditional django-allauth views:
+
+```python
+HEADLESS_ONLY = True
+```
+
+When enabled:
+- Login, signup, and account management views are disabled
+- Provider callback endpoints remain active (required for OAuth)
+- Only the headless API endpoints are accessible
+
+### HEADLESS_FRONTEND_URLS
+
+**Default:** `{}`
+
+Defines URLs for your frontend application, used in email links:
+
+```python
+HEADLESS_FRONTEND_URLS = {
+    "account_confirm_email": "https://app.example.com/account/verify-email/{key}",
+    "account_reset_password": "https://app.example.com/account/password/reset",
+    "account_reset_password_from_key": "https://app.example.com/account/password/reset/key/{key}",
+    "account_signup": "https://app.example.com/account/signup",
+    "socialaccount_login_error": "https://app.example.com/account/provider/callback",
+}
+```
+
+The `{key}` placeholder is automatically populated with verification/reset keys.
+
+### HEADLESS_CLIENTS
+
+**Default:** `("app", "browser")`
+
+Specifies supported client types:
+
+```python
+# Support both client types (default)
+HEADLESS_CLIENTS = ("app", "browser")
+
+# Only app clients (mobile apps, cross-origin SPAs)
+HEADLESS_CLIENTS = ("app",)
+
+# Only browser clients (same-origin SPAs)
+HEADLESS_CLIENTS = ("browser",)
+```
+
+**Browser clients** use CSRF tokens and cookies. **App clients** use token-based authentication.
+
+### HEADLESS_ADAPTER
+
+**Default:** `"allauth.headless.adapter.DefaultHeadlessAdapter"`
+
+Customize headless behavior with a custom adapter:
+
+```python
+HEADLESS_ADAPTER = "myapp.adapters.CustomHeadlessAdapter"
+```
+
+Create a custom adapter:
+
+```python
+from allauth.headless.adapter import DefaultHeadlessAdapter
+
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def serialize_user(self, user):
+        """Customize user serialization in API responses."""
+        data = super().serialize_user(user)
+        # Add custom fields
+        data['full_name'] = user.get_full_name()
+        data['profile_image'] = user.profile.image_url if hasattr(user, 'profile') else None
+        return data
+```
+
+## Token Strategy Configuration
+
+### HEADLESS_TOKEN_STRATEGY
+
+**Default:** `"allauth.headless.tokens.strategies.sessions.SessionTokenStrategy"`
+
+Choose your authentication token strategy:
+
+```python
+# Session tokens (default, simple and secure)
+HEADLESS_TOKEN_STRATEGY = "allauth.headless.tokens.strategies.sessions.SessionTokenStrategy"
+
+# JWT tokens (for microservices or stateless auth)
+HEADLESS_TOKEN_STRATEGY = "allauth.headless.tokens.strategies.jwt.JWTTokenStrategy"
+```
+
+## JWT Token Configuration
+
+When using JWT token strategy, configure these settings:
+
+### HEADLESS_JWT_ALGORITHM
+
+**Default:** `"RS256"`
+
+The algorithm used to sign JWT tokens:
+
+```python
+# Asymmetric (recommended for production)
+HEADLESS_JWT_ALGORITHM = "RS256"  # Requires public/private key pair
+
+# Symmetric (simpler, uses secret key)
+HEADLESS_JWT_ALGORITHM = "HS256"  # Uses SECRET_KEY or HEADLESS_JWT_PRIVATE_KEY
+```
+
+### HEADLESS_JWT_PRIVATE_KEY
+
+**Default:** `""`
+
+The private key or secret for signing JWT tokens:
+
+```python
+# For asymmetric algorithms (RS256)
+# Generate with: openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
+HEADLESS_JWT_PRIVATE_KEY = """
+-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCiStSwvoSk61uf
+cQvkGDmR6gsM2QjVgKxCTPtg3tMhMO7kXq3PPMEiWlF49JicjPWs5vkYcLAsWNVE
+...
+rfnteLIERvzd4rLi9WjTahfKA2Mq3YNIe3Hw8IDrrczJgd/XkEaENGYXmmNCX22B
+gtUcukumVPtrDhGK9i/PG3Q=
+-----END PRIVATE KEY-----
+"""
+
+# For symmetric algorithms (HS256)
+HEADLESS_JWT_PRIVATE_KEY = "your-secret-key-here"
+```
+
+If not set with symmetric algorithms, `SECRET_KEY` is used as fallback.
+
+### HEADLESS_JWT_ACCESS_TOKEN_EXPIRES_IN
+
+**Default:** `300` (5 minutes)
+
+Lifetime of access tokens in seconds:
+
+```python
+HEADLESS_JWT_ACCESS_TOKEN_EXPIRES_IN = 300  # 5 minutes
+HEADLESS_JWT_ACCESS_TOKEN_EXPIRES_IN = 900  # 15 minutes
+HEADLESS_JWT_ACCESS_TOKEN_EXPIRES_IN = 3600  # 1 hour
+```
+
+Shorter lifetimes are more secure but require more frequent refreshes.
+
+### HEADLESS_JWT_REFRESH_TOKEN_EXPIRES_IN
+
+**Default:** `86400` (24 hours)
+
+Lifetime of refresh tokens in seconds:
+
+```python
+HEADLESS_JWT_REFRESH_TOKEN_EXPIRES_IN = 86400    # 1 day
+HEADLESS_JWT_REFRESH_TOKEN_EXPIRES_IN = 604800   # 7 days
+HEADLESS_JWT_REFRESH_TOKEN_EXPIRES_IN = 2592000  # 30 days
+```
+
+### HEADLESS_JWT_AUTHORIZATION_HEADER_SCHEME
+
+**Default:** `"Bearer"`
+
+HTTP Authorization header scheme:
+
+```python
+HEADLESS_JWT_AUTHORIZATION_HEADER_SCHEME = "Bearer"
+```
+
+Used as: `Authorization: Bearer <access-token>`
+
+### HEADLESS_JWT_STATEFUL_VALIDATION_ENABLED
+
+**Default:** `False`
+
+Enable stateful JWT validation:
+
+```python
+HEADLESS_JWT_STATEFUL_VALIDATION_ENABLED = True
+```
+
+When enabled:
+- Access tokens are validated against active sessions
+- Logout immediately invalidates access tokens
+- Reduces the "stateless" benefit but improves security
+
+### HEADLESS_JWT_ROTATE_REFRESH_TOKEN
+
+**Default:** `True`
+
+Rotate refresh tokens on access token refresh:
+
+```python
+HEADLESS_JWT_ROTATE_REFRESH_TOKEN = True
+```
+
+When enabled:
+- Each refresh request returns a new refresh token
+- The old refresh token is invalidated
+- Improves security by preventing refresh token reuse
+
+## OpenAPI Specification
+
+### HEADLESS_SERVE_SPECIFICATION
+
+**Default:** `False`
+
+Serve OpenAPI specification files:
+
+```python
+HEADLESS_SERVE_SPECIFICATION = True
+```
+
+Requires installing: `pip install "django-allauth[headless-spec]"`
+
+Enables endpoints:
+- `/_allauth/openapi.yaml` - YAML format
+- `/_allauth/openapi.json` - JSON format
+- `/_allauth/openapi.html` - Interactive documentation
+
+### HEADLESS_SPECIFICATION_TEMPLATE_NAME
+
+**Default:** `"headless/spec/redoc_cdn.html"`
+
+Template for HTML specification:
+
+```python
+# Redoc documentation (default)
+HEADLESS_SPECIFICATION_TEMPLATE_NAME = "headless/spec/redoc_cdn.html"
+
+# Swagger UI documentation
+HEADLESS_SPECIFICATION_TEMPLATE_NAME = "headless/spec/swagger_cdn.html"
+```
+
+## Account Configuration
+
+These are standard django-allauth settings that affect headless behavior:
+
+### Email Verification
+
+```python
+# Email verification mode
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"  # Required before login
+ACCOUNT_EMAIL_VERIFICATION = "optional"   # Recommended but not required
+ACCOUNT_EMAIL_VERIFICATION = "none"       # Disabled
+
+# Enable code-based email verification
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+```
+
+### Login Methods
+
+```python
+# Login with email only
+ACCOUNT_AUTHENTICATION_METHOD = "email"
+
+# Login with username only
+ACCOUNT_AUTHENTICATION_METHOD = "username"
+
+# Login with either email or username
+ACCOUNT_AUTHENTICATION_METHOD = "username_email"
+```
+
+### Login by Code
+
+```python
+# Enable passwordless login via email code
+ACCOUNT_LOGIN_BY_CODE_ENABLED = True
+```
+
+### Password Reset
+
+```python
+# Enable code-based password reset (no email link needed)
+ACCOUNT_PASSWORD_RESET_BY_CODE_ENABLED = True
+```
+
+## Complete Example Configuration
+
+Here's a production-ready configuration:
+
+```python
+# Django settings
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'allauth',
+    'allauth.account',
+    'allauth.headless',
+    'allauth.socialaccount',
+    'allauth.mfa',
+]
+
+AUTHENTICATION_BACKENDS = [
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # If using CORS
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
+]
+
+# Headless configuration
+HEADLESS_ONLY = True
+HEADLESS_FRONTEND_URLS = {
+    "account_confirm_email": "https://app.example.com/account/verify-email/{key}",
+    "account_reset_password_from_key": "https://app.example.com/account/password/reset/key/{key}",
+    "account_reset_password": "https://app.example.com/account/password/reset",
+    "account_signup": "https://app.example.com/account/signup",
+}
+
+# JWT token strategy
+HEADLESS_TOKEN_STRATEGY = "allauth.headless.tokens.strategies.jwt.JWTTokenStrategy"
+HEADLESS_JWT_ALGORITHM = "RS256"
+HEADLESS_JWT_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----
+...
+-----END PRIVATE KEY-----"""
+HEADLESS_JWT_ACCESS_TOKEN_EXPIRES_IN = 300  # 5 minutes
+HEADLESS_JWT_REFRESH_TOKEN_EXPIRES_IN = 604800  # 7 days
+HEADLESS_JWT_STATEFUL_VALIDATION_ENABLED = True
+
+# Account settings
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+ACCOUNT_AUTHENTICATION_METHOD = "email"
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+ACCOUNT_LOGIN_BY_CODE_ENABLED = True
+
+# MFA settings
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes", "webauthn"]
+MFA_PASSKEY_LOGIN_ENABLED = True
+```
+
+## Next Steps
+
+- [Set up CORS](/headless/cors) for cross-origin requests
+- Learn about [authentication flows](/headless/authentication)
+- Integrate JWT tokens with [Django REST Framework or Django Ninja](/headless/authentication#securing-your-api)

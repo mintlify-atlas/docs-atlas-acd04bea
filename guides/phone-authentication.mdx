@@ -1,0 +1,463 @@
+---
+title: Phone Authentication
+description: Implement phone number authentication and verification with SMS in django-allauth
+---
+
+## Overview
+
+Django-allauth supports phone number authentication, allowing users to sign up and log in using their phone number instead of (or in addition to) email addresses. This guide covers complete implementation including SMS verification.
+
+## Basic Setup
+
+Configure phone as a login method:
+
+```python settings.py
+# Enable phone as a login method
+ACCOUNT_LOGIN_METHODS = {"phone", "email"}
+
+# Or phone only
+# ACCOUNT_LOGIN_METHODS = {"phone"}
+
+# Add phone to signup fields
+ACCOUNT_SIGNUP_FIELDS = [
+    'phone*',      # Required phone field
+    'email*',      # Optional: remove if phone-only
+    'password1*',
+    'password2*',
+]
+
+# Custom adapter for phone functionality
+ACCOUNT_ADAPTER = 'myapp.adapters.MyAccountAdapter'
+```
+
+## Phone Number Storage
+
+Django-allauth doesn't provide a built-in phone model. You must implement storage yourself.
+
+### Option 1: Custom User Model
+
+Store phone directly on the user model:
+
+```python models.py
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+class User(AbstractUser):
+    phone = models.CharField(max_length=20, unique=True, null=True, blank=True)
+    phone_verified = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return self.email or self.phone or self.username
+```
+
+```python settings.py
+AUTH_USER_MODEL = 'myapp.User'
+```
+
+### Option 2: Separate Phone Model
+
+Store phone numbers in a related model:
+
+```python models.py
+from django.contrib.auth import get_user_model
+from django.db import models
+
+User = get_user_model()
+
+class PhoneNumber(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='phone_numbers')
+    phone = models.CharField(max_length=20, unique=True)
+    verified = models.BooleanField(default=False)
+    primary = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = [('user', 'phone')]
+    
+    def __str__(self):
+        return self.phone
+```
+
+## Adapter Implementation
+
+Implement the required adapter methods for phone functionality:
+
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+from django.contrib.auth import get_user_model
+from .models import PhoneNumber  # If using separate model
+
+User = get_user_model()
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def get_phone(self, user):
+        """Retrieve the phone number for a user."""
+        # Option 1: Custom user model
+        return getattr(user, 'phone', None)
+        
+        # Option 2: Separate phone model
+        # try:
+        #     phone_obj = PhoneNumber.objects.get(user=user, primary=True)
+        #     return phone_obj.phone
+        # except PhoneNumber.DoesNotExist:
+        #     return None
+    
+    def set_phone(self, user, phone, verified=False):
+        """Save a phone number for a user."""
+        # Option 1: Custom user model
+        user.phone = phone
+        user.phone_verified = verified
+        user.save()
+        
+        # Option 2: Separate phone model
+        # phone_obj, created = PhoneNumber.objects.get_or_create(
+        #     user=user,
+        #     phone=phone,
+        #     defaults={'verified': verified, 'primary': True}
+        # )
+        # if not created:
+        #     phone_obj.verified = verified
+        #     phone_obj.save()
+    
+    def set_phone_verified(self, user, phone):
+        """Mark a phone number as verified."""
+        # Option 1: Custom user model
+        if user.phone == phone:
+            user.phone_verified = True
+            user.save()
+        
+        # Option 2: Separate phone model
+        # PhoneNumber.objects.filter(
+        #     user=user,
+        #     phone=phone
+        # ).update(verified=True)
+    
+    def get_user_by_phone(self, phone):
+        """Look up a user by phone number."""
+        # Option 1: Custom user model
+        try:
+            return User.objects.get(phone=phone)
+        except User.DoesNotExist:
+            return None
+        
+        # Option 2: Separate phone model
+        # try:
+        #     phone_obj = PhoneNumber.objects.get(phone=phone)
+        #     return phone_obj.user
+        # except PhoneNumber.DoesNotExist:
+        #     return None
+    
+    def send_verification_code_sms(self, request, phone_verification):
+        """Send verification code via SMS."""
+        phone = phone_verification.phone
+        code = phone_verification.code
+        
+        # Implement your SMS provider integration here
+        # Example with Twilio:
+        from twilio.rest import Client
+        from django.conf import settings
+        
+        client = Client(
+            settings.TWILIO_ACCOUNT_SID,
+            settings.TWILIO_AUTH_TOKEN
+        )
+        
+        message = client.messages.create(
+            body=f"Your verification code is: {code}",
+            from_=settings.TWILIO_PHONE_NUMBER,
+            to=phone
+        )
+        
+        print(f"SMS sent to {phone}: {code}")  # For development
+    
+    def send_unknown_account_sms(self, request, phone):
+        """Send SMS for unknown account (optional)."""
+        # Similar to send_verification_code_sms
+        # Used when ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS is enabled for phones
+        pass
+```
+
+## SMS Provider Integration
+
+### Twilio
+
+```bash
+pip install twilio
+```
+
+```python settings.py
+TWILIO_ACCOUNT_SID = 'your_account_sid'
+TWILIO_AUTH_TOKEN = 'your_auth_token'
+TWILIO_PHONE_NUMBER = '+1234567890'
+```
+
+### AWS SNS
+
+```bash
+pip install boto3
+```
+
+```python adapters.py
+import boto3
+from django.conf import settings
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def send_verification_code_sms(self, request, phone_verification):
+        sns = boto3.client(
+            'sns',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_REGION
+        )
+        
+        sns.publish(
+            PhoneNumber=phone_verification.phone,
+            Message=f"Your verification code is: {phone_verification.code}"
+        )
+```
+
+## Phone Number Validation
+
+Customize phone number validation and formatting:
+
+```python adapters.py
+import phonenumbers
+from phonenumbers import NumberParseException
+from django import forms
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def clean_phone(self, phone: str) -> str:
+        """Validate and normalize phone numbers."""
+        try:
+            # Parse phone number (requires country code)
+            parsed = phonenumbers.parse(phone, None)
+            
+            # Validate it's a valid number
+            if not phonenumbers.is_valid_number(parsed):
+                raise forms.ValidationError(
+                    "Please enter a valid phone number."
+                )
+            
+            # Return in E.164 format (+1234567890)
+            return phonenumbers.format_number(
+                parsed,
+                phonenumbers.PhoneNumberFormat.E164
+            )
+        except NumberParseException:
+            raise forms.ValidationError(
+                "Please enter phone number in international format (e.g., +1234567890)"
+            )
+    
+    def phone_form_field(self):
+        """Customize the phone form field."""
+        from django import forms
+        
+        return forms.CharField(
+            label='Phone Number',
+            max_length=20,
+            widget=forms.TextInput(attrs={
+                'type': 'tel',
+                'placeholder': '+1 (555) 123-4567',
+                'autocomplete': 'tel',
+            }),
+            help_text='Enter your phone number with country code'
+        )
+```
+
+Install phonenumbers library:
+
+```bash
+pip install phonenumbers
+```
+
+## Phone Verification Configuration
+
+```python settings.py
+# Enable phone verification (default: True)
+ACCOUNT_PHONE_VERIFICATION_ENABLED = True
+
+# Maximum attempts to enter verification code (default: 3)
+ACCOUNT_PHONE_VERIFICATION_MAX_ATTEMPTS = 3
+
+# Code expiration time in seconds (default: 900 = 15 minutes)
+ACCOUNT_PHONE_VERIFICATION_TIMEOUT = 900
+
+# Allow changing phone number during verification (default: False)
+ACCOUNT_PHONE_VERIFICATION_SUPPORTS_CHANGE = False
+
+# Allow resending verification code (default: False)
+ACCOUNT_PHONE_VERIFICATION_SUPPORTS_RESEND = True
+```
+
+## Login with Phone Only
+
+Configure phone-only authentication:
+
+```python settings.py
+# Use phone as the only login method
+ACCOUNT_LOGIN_METHODS = {"phone"}
+
+# Remove email from signup
+ACCOUNT_SIGNUP_FIELDS = [
+    'phone*',
+    'password1*',
+    'password2*',
+]
+
+# Disable username
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+
+# Set email field if not using email
+ACCOUNT_USER_MODEL_EMAIL_FIELD = None  # or 'email' if keeping it optional
+```
+
+## Custom Phone Input Widget
+
+Create a better phone input experience:
+
+```python widgets.py
+from django import forms
+
+class PhoneNumberInput(forms.TextInput):
+    template_name = 'widgets/phone_input.html'
+    
+    def __init__(self, attrs=None):
+        default_attrs = {
+            'type': 'tel',
+            'class': 'phone-input',
+            'placeholder': '+1 (555) 123-4567',
+        }
+        if attrs:
+            default_attrs.update(attrs)
+        super().__init__(default_attrs)
+```
+
+```html widgets/phone_input.html
+<input{% if id %} id="{{ id }}"{% endif %}
+       type="{{ type }}"
+       name="{{ name }}"
+       {% if value %}value="{{ value }}"{% endif %}
+       {% for attr, val in widget.attrs.items %}
+         {{ attr }}="{{ val }}"
+       {% endfor %}>
+
+<script>
+// Add phone number formatting/validation JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    const phoneInput = document.querySelector('.phone-input');
+    
+    // You can integrate libraries like:
+    // - intl-tel-input
+    // - cleave.js
+    // - libphonenumber-js
+});
+</script>
+```
+
+## Phone Number Verification Flow
+
+Customize the verification templates:
+
+```html templates/account/phone_verification.html
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Verify Your Phone Number</h2>
+
+<p>We've sent a verification code to <strong>{{ phone }}</strong></p>
+
+<form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Verify</button>
+</form>
+
+{% if supports_resend %}
+<form method="post" action="{% url 'account_resend_phone' %}">
+    {% csrf_token %}
+    <button type="submit">Resend Code</button>
+</form>
+{% endif %}
+
+{% if supports_change %}
+<a href="{% url 'account_change_phone' %}">Use a different phone number</a>
+{% endif %}
+{% endblock %}
+```
+
+## Testing Phone Authentication
+
+For development, create a test adapter that logs codes:
+
+```python adapters.py
+class DevAccountAdapter(MyAccountAdapter):
+    """Development adapter that prints SMS codes to console."""
+    
+    def send_verification_code_sms(self, request, phone_verification):
+        print("-" * 50)
+        print(f"SMS Verification Code")
+        print(f"Phone: {phone_verification.phone}")
+        print(f"Code: {phone_verification.code}")
+        print("-" * 50)
+        
+        # Optionally still send via SMS provider
+        # super().send_verification_code_sms(request, phone_verification)
+```
+
+```python settings.py
+if DEBUG:
+    ACCOUNT_ADAPTER = 'myapp.adapters.DevAccountAdapter'
+else:
+    ACCOUNT_ADAPTER = 'myapp.adapters.MyAccountAdapter'
+```
+
+## Security Considerations
+
+1. **Rate Limiting**: Phone verification is automatically rate-limited. Configure as needed:
+
+```python settings.py
+ACCOUNT_RATE_LIMITS = {
+    'change_phone': '1/m/user',  # 1 change per minute per user
+    'confirm_phone': '1/3m/key',  # 1 confirmation per 3 minutes per phone
+}
+```
+
+2. **Phone Number Enumeration**: Consider enabling prevention:
+
+```python settings.py
+ACCOUNT_PREVENT_ENUMERATION = True
+```
+
+3. **SMS Costs**: Implement limits on SMS sends to prevent abuse.
+
+4. **Verification Code Security**:
+   - Codes expire after `ACCOUNT_PHONE_VERIFICATION_TIMEOUT`
+   - Limited attempts via `ACCOUNT_PHONE_VERIFICATION_MAX_ATTEMPTS`
+   - Use strong random codes (handled automatically)
+
+## Complete Example
+
+```python settings.py
+# Phone authentication configuration
+ACCOUNT_LOGIN_METHODS = {"phone"}
+ACCOUNT_SIGNUP_FIELDS = ['phone*', 'password1*', 'password2*']
+ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+
+# Phone verification settings
+ACCOUNT_PHONE_VERIFICATION_ENABLED = True
+ACCOUNT_PHONE_VERIFICATION_MAX_ATTEMPTS = 3
+ACCOUNT_PHONE_VERIFICATION_TIMEOUT = 600  # 10 minutes
+ACCOUNT_PHONE_VERIFICATION_SUPPORTS_RESEND = True
+
+# Custom adapter
+ACCOUNT_ADAPTER = 'myapp.adapters.MyAccountAdapter'
+
+# SMS provider settings
+TWILIO_ACCOUNT_SID = env('TWILIO_ACCOUNT_SID')
+TWILIO_AUTH_TOKEN = env('TWILIO_AUTH_TOKEN')
+TWILIO_PHONE_NUMBER = env('TWILIO_PHONE_NUMBER')
+```
+
+This provides a complete phone authentication system with SMS verification.

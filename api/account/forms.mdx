@@ -1,0 +1,543 @@
+---
+title: Forms
+description: Form classes for authentication, email management, and password operations
+---
+
+## LoginForm
+
+Handles user login with support for username, email, or phone-based authentication.
+
+### Fields
+
+<ParamField path="login" type="CharField | EmailField">
+  Login identifier. Field type varies based on `LOGIN_METHODS` setting.
+</ParamField>
+
+<ParamField path="password" type="PasswordField" optional>
+  User password. Omitted if passwordless login is enabled.
+</ParamField>
+
+<ParamField path="remember" type="BooleanField" optional>
+  Remember me checkbox. Omitted if `SESSION_REMEMBER` is configured.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="request" type="HttpRequest" optional>
+  The HTTP request object.
+</ParamField>
+
+### Methods
+
+#### user_credentials()
+
+Returns credentials dictionary for authentication.
+
+<ResponseField name="return" type="dict">
+  Dictionary with login method and password (if applicable).
+</ResponseField>
+
+```python
+form = LoginForm(data=request.POST, request=request)
+if form.is_valid():
+    credentials = form.user_credentials()
+    # {'email': 'user@example.com', 'password': '...'}
+```
+
+#### login(request, redirect_url=None)
+
+Performs the login action.
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="redirect_url" type="str" optional>
+  URL to redirect after login.
+</ParamField>
+
+<ResponseField name="return" type="HttpResponse">
+  Response object (redirect or stage flow).
+</ResponseField>
+
+```python
+if form.is_valid():
+    return form.login(request, redirect_url='/dashboard/')
+```
+
+---
+
+## SignupForm
+
+Handles user registration with configurable fields.
+
+### Fields
+
+<ParamField path="username" type="CharField" optional>
+  Username field. Presence depends on `SIGNUP_FIELDS` setting.
+</ParamField>
+
+<ParamField path="email" type="EmailField" optional>
+  Email field. Presence and requirement depends on `SIGNUP_FIELDS` setting.
+</ParamField>
+
+<ParamField path="email2" type="EmailField" optional>
+  Email confirmation field. Only if configured in `SIGNUP_FIELDS`.
+</ParamField>
+
+<ParamField path="password1" type="PasswordField" optional>
+  Password field. Omitted for passkey signup.
+</ParamField>
+
+<ParamField path="password2" type="PasswordField" optional>
+  Password confirmation. Only if configured in `SIGNUP_FIELDS`.
+</ParamField>
+
+<ParamField path="phone" type="CharField" optional>
+  Phone number field. Only if configured in `SIGNUP_FIELDS`.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="by_passkey" type="bool" default="False">
+  Whether this is a passkey-based signup.
+</ParamField>
+
+<ParamField path="email_required" type="bool" optional>
+  Override email field requirement.
+</ParamField>
+
+<ParamField path="username_required" type="bool" optional>
+  Override username field requirement.
+</ParamField>
+
+### Methods
+
+#### validate_unique_email(value)
+
+Validates email uniqueness and handles enumeration prevention.
+
+<ParamField path="value" type="str">
+  Email address to validate.
+</ParamField>
+
+<ResponseField name="return" type="str">
+  Returns the validated email.
+</ResponseField>
+
+#### try_save(request)
+
+Attempts to save the user, handling account conflicts.
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ResponseField name="return" type="tuple">
+  Returns `(user, response)` tuple. Response is set if enumeration prevention triggered.
+</ResponseField>
+
+```python
+form = SignupForm(data=request.POST)
+if form.is_valid():
+    user, response = form.try_save(request)
+    if response:
+        return response  # Enumeration prevention response
+    # Continue with user...
+```
+
+#### save(request)
+
+Creates and saves the new user.
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ResponseField name="return" type="User">
+  Returns the created user object.
+</ResponseField>
+
+#### custom_signup(request, user)
+
+Hook for custom signup logic. Override in subclasses.
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The newly created user.
+</ParamField>
+
+```python
+class MySignupForm(SignupForm):
+    def custom_signup(self, request, user):
+        # Custom logic here
+        user.profile.send_welcome_email()
+```
+
+---
+
+## AddEmailForm
+
+Form for adding additional email addresses to an account.
+
+### Fields
+
+<ParamField path="email" type="EmailField" required>
+  The email address to add.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="user" type="User">
+  The user adding the email address.
+</ParamField>
+
+### Methods
+
+#### save(request)
+
+Adds the email address to the user's account.
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ResponseField name="return" type="EmailAddress">
+  Returns the created EmailAddress object.
+</ResponseField>
+
+```python
+form = AddEmailForm(data={'email': 'new@example.com'}, user=request.user)
+if form.is_valid():
+    email_address = form.save(request)
+```
+
+---
+
+## ChangePasswordForm
+
+Form for changing password when user knows their current password.
+
+### Fields
+
+<ParamField path="oldpassword" type="PasswordField">
+  Current password.
+</ParamField>
+
+<ParamField path="password1" type="SetPasswordField">
+  New password.
+</ParamField>
+
+<ParamField path="password2" type="PasswordField">
+  New password confirmation.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="user" type="User">
+  The user changing their password.
+</ParamField>
+
+### Methods
+
+#### save()
+
+Changes the user's password.
+
+```python
+form = ChangePasswordForm(data=request.POST, user=request.user)
+if form.is_valid():
+    form.save()
+```
+
+---
+
+## SetPasswordForm
+
+Form for setting password when user doesn't have a usable password.
+
+### Fields
+
+<ParamField path="password1" type="SetPasswordField">
+  New password.
+</ParamField>
+
+<ParamField path="password2" type="PasswordField">
+  Password confirmation.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="user" type="User">
+  The user setting their password.
+</ParamField>
+
+### Methods
+
+#### save()
+
+Sets the user's password.
+
+```python
+form = SetPasswordForm(data=request.POST, user=request.user)
+if form.is_valid():
+    form.save()
+```
+
+---
+
+## ResetPasswordForm
+
+Form for requesting a password reset.
+
+### Fields
+
+<ParamField path="email" type="EmailField" required>
+  Email address to send reset link to.
+</ParamField>
+
+### Methods
+
+#### save(request, **kwargs)
+
+Initiates password reset flow.
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="token_generator" type="PasswordResetTokenGenerator" optional>
+  Custom token generator.
+</ParamField>
+
+<ResponseField name="return" type="str">
+  Returns the email address.
+</ResponseField>
+
+```python
+form = ResetPasswordForm(data={'email': 'user@example.com'})
+if form.is_valid():
+    email = form.save(request)
+```
+
+---
+
+## ResetPasswordKeyForm
+
+Form for completing password reset with a key/token.
+
+### Fields
+
+<ParamField path="password1" type="SetPasswordField">
+  New password.
+</ParamField>
+
+<ParamField path="password2" type="PasswordField">
+  Password confirmation.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="user" type="User">
+  The user resetting their password.
+</ParamField>
+
+<ParamField path="temp_key" type="str">
+  The temporary reset key.
+</ParamField>
+
+### Methods
+
+#### save()
+
+Resets the user's password.
+
+```python
+form = ResetPasswordKeyForm(
+    data=request.POST,
+    user=reset_user,
+    temp_key=key
+)
+if form.is_valid():
+    form.save()
+```
+
+---
+
+## RequestLoginCodeForm
+
+Form for requesting a login code (passwordless login).
+
+### Fields
+
+<ParamField path="email" type="EmailField" optional>
+  Email to send code to. Required if phone not enabled.
+</ParamField>
+
+<ParamField path="phone" type="CharField" optional>
+  Phone to send code to. Only present if phone login enabled.
+</ParamField>
+
+### Usage
+
+```python
+form = RequestLoginCodeForm(data=request.POST)
+if form.is_valid():
+    # Code sending is handled by the view
+    pass
+```
+
+---
+
+## ConfirmLoginCodeForm
+
+Form for verifying a login code.
+
+### Fields
+
+<ParamField path="code" type="CharField">
+  The verification code.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="code" type="str">
+  Expected code for validation.
+</ParamField>
+
+```python
+form = ConfirmLoginCodeForm(data=request.POST, code=expected_code)
+if form.is_valid():
+    # Code is valid
+    pass
+```
+
+---
+
+## ReauthenticateForm
+
+Form for reauthenticating an already logged-in user.
+
+### Fields
+
+<ParamField path="password" type="PasswordField">
+  Current password for verification.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="user" type="User">
+  The user to reauthenticate.
+</ParamField>
+
+```python
+form = ReauthenticateForm(data=request.POST, user=request.user)
+if form.is_valid():
+    # User reauthenticated successfully
+    pass
+```
+
+---
+
+## ChangeEmailForm
+
+Form for changing email address with verification.
+
+### Fields
+
+<ParamField path="email" type="EmailField" required>
+  New email address.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="email" type="str" optional>
+  Current email address.
+</ParamField>
+
+```python
+form = ChangeEmailForm(data=request.POST, email=current_email)
+if form.is_valid():
+    new_email = form.cleaned_data['email']
+```
+
+---
+
+## ChangePhoneForm
+
+Form for changing phone number with verification.
+
+### Fields
+
+<ParamField path="phone" type="CharField" required>
+  New phone number.
+</ParamField>
+
+### Constructor Parameters
+
+<ParamField path="user" type="User">
+  The user changing their phone.
+</ParamField>
+
+<ParamField path="phone" type="str" optional>
+  Current phone number.
+</ParamField>
+
+```python
+form = ChangePhoneForm(data=request.POST, user=request.user, phone=current_phone)
+if form.is_valid():
+    new_phone = form.cleaned_data['phone']
+```
+
+---
+
+## Usage Examples
+
+### Custom Signup Form
+
+```python
+from allauth.account.forms import SignupForm
+from django import forms
+
+class MySignupForm(SignupForm):
+    first_name = forms.CharField(max_length=30, required=True)
+    last_name = forms.CharField(max_length=30, required=True)
+    
+    def custom_signup(self, request, user):
+        user.first_name = self.cleaned_data['first_name']
+        user.last_name = self.cleaned_data['last_name']
+        user.save()
+```
+
+### Password Change Flow
+
+```python
+from allauth.account.forms import ChangePasswordForm
+
+# In view
+if request.user.has_usable_password():
+    form = ChangePasswordForm(data=request.POST, user=request.user)
+else:
+    form = SetPasswordForm(data=request.POST, user=request.user)
+
+if form.is_valid():
+    form.save()
+```
+
+### Email Management
+
+```python
+from allauth.account.forms import AddEmailForm
+from allauth.account.models import EmailAddress
+
+# Add email
+form = AddEmailForm(data={'email': 'new@example.com'}, user=request.user)
+if form.is_valid():
+    email_address = form.save(request)
+    
+# List user emails
+emails = EmailAddress.objects.filter(user=request.user)
+```

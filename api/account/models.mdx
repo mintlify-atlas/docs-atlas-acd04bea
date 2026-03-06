@@ -1,0 +1,450 @@
+---
+title: Models
+description: Django models for user authentication and email management
+---
+
+## EmailAddress
+
+Manages email addresses associated with user accounts, including verification status and primary email designation.
+
+### Fields
+
+<ParamField path="user" type="ForeignKey">
+  Reference to the user model (settings.AUTH_USER_MODEL). On delete: CASCADE.
+</ParamField>
+
+<ParamField path="email" type="EmailField">
+  The email address. Indexed for performance. Max length determined by `ACCOUNT_EMAIL_MAX_LENGTH` setting.
+</ParamField>
+
+<ParamField path="verified" type="BooleanField" default="False">
+  Whether the email address has been verified.
+</ParamField>
+
+<ParamField path="primary" type="BooleanField" default="False">
+  Whether this is the user's primary email address. Only one email per user can be primary.
+</ParamField>
+
+### Methods
+
+#### clean()
+
+Normalizes the email address to lowercase before saving.
+
+```python
+def clean(self):
+    super().clean()
+    self.email = self.email.lower()
+```
+
+#### can_set_verified()
+
+Checks whether the email address can be marked as verified.
+
+<ResponseField name="return" type="bool">
+  Returns `True` if the email can be verified, `False` if there's a conflict with `UNIQUE_EMAIL` setting.
+</ResponseField>
+
+```python
+email_address = EmailAddress.objects.get(pk=1)
+if email_address.can_set_verified():
+    email_address.set_verified()
+```
+
+#### set_verified(commit=True)
+
+Marks the email address as verified.
+
+<ParamField path="commit" type="bool" default="True">
+  Whether to save the change to the database immediately.
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `True` if the email was successfully verified, `False` otherwise.
+</ResponseField>
+
+```python
+email_address.set_verified(commit=True)
+```
+
+#### set_as_primary(conditional=False)
+
+Marks the email address as the user's primary email.
+
+<ParamField path="conditional" type="bool" default="False">
+  If `True`, only sets as primary if no other primary email exists.
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `True` if successfully set as primary, `False` if conditional and another primary exists.
+</ResponseField>
+
+```python
+# Force set as primary
+email_address.set_as_primary()
+
+# Only set if no primary exists
+email_address.set_as_primary(conditional=True)
+```
+
+#### send_confirmation(request=None, signup=False)
+
+Creates and sends an email confirmation.
+
+<ParamField path="request" type="HttpRequest" optional>
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="signup" type="bool" default="False">
+  Whether this confirmation is for signup.
+</ParamField>
+
+<ResponseField name="return" type="EmailConfirmation">
+  Returns the created confirmation object.
+</ResponseField>
+
+```python
+confirmation = email_address.send_confirmation(request, signup=True)
+```
+
+#### remove()
+
+Deletes the email address and updates the user's email field if necessary.
+
+```python
+email_address.remove()
+```
+
+### Constraints
+
+- **unique_together**: `(user, email)` - Each user can have each email address only once
+- **unique_primary_email**: Only one primary email per user (enforced via UniqueConstraint)
+- **unique_verified_email**: If `UNIQUE_EMAIL` is enabled, verified emails are unique across all users
+
+---
+
+## EmailConfirmation
+
+Represents an email confirmation request with a unique key.
+
+### Fields
+
+<ParamField path="email_address" type="ForeignKey">
+  Reference to the EmailAddress being confirmed. On delete: CASCADE.
+</ParamField>
+
+<ParamField path="created" type="DateTimeField">
+  When the confirmation was created. Defaults to current time.
+</ParamField>
+
+<ParamField path="sent" type="DateTimeField" optional>
+  When the confirmation email was sent.
+</ParamField>
+
+<ParamField path="key" type="CharField">
+  Unique confirmation key (max length 64).
+</ParamField>
+
+### Class Methods
+
+#### create(email_address)
+
+Creates a new confirmation for an email address.
+
+<ParamField path="email_address" type="EmailAddress">
+  The email address to create confirmation for.
+</ParamField>
+
+<ResponseField name="return" type="EmailConfirmation">
+  Returns the created confirmation object.
+</ResponseField>
+
+```python
+confirmation = EmailConfirmation.create(email_address)
+```
+
+#### from_key(key)
+
+Retrieves a valid confirmation by its key.
+
+<ParamField path="key" type="str">
+  The confirmation key.
+</ParamField>
+
+<ResponseField name="return" type="EmailConfirmation | None">
+  Returns the confirmation object if valid, None otherwise.
+</ResponseField>
+
+```python
+confirmation = EmailConfirmation.from_key("abc123")
+if confirmation:
+    confirmation.confirm(request)
+```
+
+### Instance Methods
+
+#### key_expired()
+
+Checks if the confirmation key has expired.
+
+<ResponseField name="return" type="bool">
+  Returns `True` if expired, based on `EMAIL_CONFIRMATION_EXPIRE_DAYS` setting.
+</ResponseField>
+
+#### confirm(request)
+
+Confirms the email address if the key hasn't expired.
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ResponseField name="return" type="EmailAddress | None">
+  Returns the confirmed EmailAddress, or None if expired.
+</ResponseField>
+
+```python
+email_address = confirmation.confirm(request)
+if email_address:
+    print(f"Confirmed: {email_address.email}")
+```
+
+#### send(request=None, signup=False)
+
+Sends the confirmation email and updates the sent timestamp.
+
+<ParamField path="request" type="HttpRequest" optional>
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="signup" type="bool" default="False">
+  Whether this is for signup.
+</ParamField>
+
+```python
+confirmation.send(request, signup=True)
+```
+
+---
+
+## EmailConfirmationHMAC
+
+HMAC-based email confirmation (no database storage). Used when `EMAIL_CONFIRMATION_HMAC` is enabled.
+
+### Class Methods
+
+#### create(email_address)
+
+Creates an HMAC-based confirmation.
+
+<ParamField path="email_address" type="EmailAddress">
+  The email address to confirm.
+</ParamField>
+
+<ResponseField name="return" type="EmailConfirmationHMAC">
+  Returns the confirmation object.
+</ResponseField>
+
+#### from_key(key)
+
+Retrieves and validates an HMAC confirmation key.
+
+<ParamField path="key" type="str">
+  The HMAC-signed key.
+</ParamField>
+
+<ResponseField name="return" type="EmailConfirmationHMAC | None">
+  Returns the confirmation if valid, None if expired or invalid.
+</ResponseField>
+
+### Properties
+
+<ParamField path="key" type="str">
+  The HMAC-signed confirmation key (read-only property).
+</ParamField>
+
+### Instance Methods
+
+#### key_expired()
+
+Always returns `False` as expiration is checked during signature validation.
+
+#### confirm(request)
+
+Confirms the email address.
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ResponseField name="return" type="EmailAddress | None">
+  Returns the confirmed EmailAddress.
+</ResponseField>
+
+---
+
+## Login
+
+Represents a user in the process of logging in. Used to track login state across requests.
+
+### Attributes
+
+<ParamField path="user" type="AbstractBaseUser | None">
+  The user being logged in. Optional to prevent user enumeration.
+</ParamField>
+
+<ParamField path="email_verification" type="EmailVerificationMethod">
+  Email verification method to use for this login.
+</ParamField>
+
+<ParamField path="redirect_url" type="str" optional>
+  URL to redirect to after login.
+</ParamField>
+
+<ParamField path="signal_kwargs" type="dict" optional>
+  Additional kwargs to pass to signals.
+</ParamField>
+
+<ParamField path="signup" type="bool" default="False">
+  Whether this login is part of signup.
+</ParamField>
+
+<ParamField path="email" type="str" optional>
+  Email address used for login.
+</ParamField>
+
+<ParamField path="phone" type="str" optional>
+  Phone number used for login.
+</ParamField>
+
+<ParamField path="state" type="dict">
+  Additional state dictionary.
+</ParamField>
+
+<ParamField path="initiated_at" type="float">
+  Unix timestamp when login was initiated.
+</ParamField>
+
+### Constructor
+
+```python
+login = Login(
+    user=user,
+    email_verification='optional',
+    redirect_url='/dashboard/',
+    signup=False,
+    email='user@example.com'
+)
+```
+
+### Methods
+
+#### serialize()
+
+Serializes the login state to a dictionary for session storage.
+
+<ResponseField name="return" type="dict">
+  Dictionary containing all login state.
+</ResponseField>
+
+```python
+login_data = login.serialize()
+request.session['login_state'] = login_data
+```
+
+#### deserialize(data)
+
+Class method to reconstruct a Login object from serialized data.
+
+<ParamField path="data" type="dict">
+  Serialized login data.
+</ParamField>
+
+<ResponseField name="return" type="Login">
+  Reconstructed Login object.
+</ResponseField>
+
+```python
+login_data = request.session.get('login_state')
+login = Login.deserialize(login_data)
+```
+
+---
+
+## Utility Functions
+
+### get_emailconfirmation_model()
+
+Returns the appropriate email confirmation model class based on settings.
+
+<ResponseField name="return" type="type">
+  Returns `EmailConfirmation`, `EmailConfirmationHMAC`, or raises `NotImplementedError` for code-based verification.
+</ResponseField>
+
+```python
+from allauth.account.models import get_emailconfirmation_model
+
+ConfirmationModel = get_emailconfirmation_model()
+confirmation = ConfirmationModel.from_key(key)
+```
+
+## Usage Examples
+
+### Managing Email Addresses
+
+```python
+from allauth.account.models import EmailAddress
+
+# Add a new email address
+email = EmailAddress.objects.create(
+    user=request.user,
+    email='new@example.com',
+    verified=False
+)
+
+# Send confirmation
+confirmation = email.send_confirmation(request)
+
+# After user confirms
+if email.can_set_verified():
+    email.set_verified()
+    email.set_as_primary()
+```
+
+### Working with Confirmations
+
+```python
+from allauth.account.models import EmailConfirmation, get_emailconfirmation_model
+
+# Create confirmation
+ConfirmationModel = get_emailconfirmation_model()
+confirmation = ConfirmationModel.create(email_address)
+confirmation.send(request, signup=True)
+
+# Verify confirmation
+confirmation = ConfirmationModel.from_key(key)
+if confirmation and not confirmation.key_expired():
+    email_address = confirmation.confirm(request)
+```
+
+### Login State Management
+
+```python
+from allauth.account.models import Login
+
+# Create login state
+login = Login(
+    user=user,
+    email=user.email,
+    redirect_url='/dashboard/',
+    signup=False
+)
+
+# Store in session
+request.session['pending_login'] = login.serialize()
+
+# Restore from session
+login_data = request.session.get('pending_login')
+if login_data:
+    login = Login.deserialize(login_data)
+```

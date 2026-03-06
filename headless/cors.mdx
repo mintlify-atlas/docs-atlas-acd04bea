@@ -1,0 +1,501 @@
+---
+title: CORS Configuration
+description: Configure Cross-Origin Resource Sharing for django-allauth headless APIs
+---
+
+When building a single-page application that runs on a different origin than your Django backend, you need to configure Cross-Origin Resource Sharing (CORS) to allow your frontend to communicate with the API.
+
+## Why CORS is Needed
+
+Browsers enforce the Same-Origin Policy, which prevents JavaScript from making requests to a different domain, protocol, or port. If your:
+
+- Frontend runs on `http://localhost:3000` (development)
+- Backend runs on `http://localhost:8000` (development)
+- Or frontend is on `https://app.example.com` and backend on `https://api.example.com`
+
+You need CORS configuration to allow cross-origin requests.
+
+## Install django-cors-headers
+
+The recommended way to handle CORS in Django is with the `django-cors-headers` package:
+
+```bash
+pip install django-cors-headers
+```
+
+## Basic Configuration
+
+Add the package to your Django settings:
+
+```python
+INSTALLED_APPS = [
+    # ...
+    'corsheaders',
+    'allauth',
+    'allauth.account',
+    'allauth.headless',
+    # ...
+]
+
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',  # Must be before CommonMiddleware
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
+]
+```
+
+Note: `CorsMiddleware` must be placed before `CommonMiddleware`.
+
+## Production Configuration
+
+For production, explicitly whitelist your frontend domain:
+
+```python
+# Allow specific origins
+CORS_ALLOWED_ORIGINS = [
+    "https://app.example.com",
+    "https://www.example.com",
+]
+
+# Allow credentials (cookies, authorization headers)
+CORS_ALLOW_CREDENTIALS = True
+
+# Custom headers used by allauth headless
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_HEADERS = [
+    *default_headers,
+    'x-session-token',
+    'x-email-verification-key',
+    'x-password-reset-key',
+]
+```
+
+## Development Configuration
+
+For local development, you can allow localhost:
+
+```python
+# settings.py or local_settings.py
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",  # Vite default
+    "http://127.0.0.1:3000",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_HEADERS = [
+    *default_headers,
+    'x-session-token',
+    'x-email-verification-key',
+    'x-password-reset-key',
+]
+```
+
+### Allow All Origins (Development Only)
+
+For quick development setup (NOT for production):
+
+```python
+# WARNING: Only for development!
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+```
+
+## Required Custom Headers
+
+django-allauth headless uses these custom HTTP headers:
+
+### X-Session-Token
+
+Used by app clients to maintain session state:
+
+```javascript
+fetch('http://localhost:8000/_allauth/app/v1/auth/session', {
+  headers: {
+    'X-Session-Token': sessionToken,
+  },
+});
+```
+
+### X-Email-Verification-Key
+
+Used to verify email addresses:
+
+```javascript
+fetch('http://localhost:8000/_allauth/app/v1/auth/email/verify', {
+  headers: {
+    'X-Email-Verification-Key': verificationKey,
+  },
+});
+```
+
+### X-Password-Reset-Key
+
+Used to verify password reset requests:
+
+```javascript
+fetch('http://localhost:8000/_allauth/app/v1/auth/password/reset', {
+  headers: {
+    'X-Password-Reset-Key': resetKey,
+  },
+});
+```
+
+All these headers must be allowed in your CORS configuration.
+
+## Complete Example Configuration
+
+### Production Settings
+
+```python
+# settings.py
+
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+    'corsheaders',
+    'allauth',
+    'allauth.account',
+    'allauth.headless',
+]
+
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',
+]
+
+# CORS Configuration
+CORS_ALLOWED_ORIGINS = [
+    "https://app.example.com",
+    "https://www.example.com",
+]
+
+CORS_ALLOW_CREDENTIALS = True
+
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_HEADERS = [
+    *default_headers,
+    'x-session-token',
+    'x-email-verification-key',
+    'x-password-reset-key',
+]
+
+# Headless configuration
+HEADLESS_ONLY = True
+HEADLESS_FRONTEND_URLS = {
+    "account_confirm_email": "https://app.example.com/account/verify-email/{key}",
+    "account_reset_password_from_key": "https://app.example.com/account/password/reset/key/{key}",
+    "account_reset_password": "https://app.example.com/account/password/reset",
+    "account_signup": "https://app.example.com/account/signup",
+}
+```
+
+### Development Settings
+
+Create a `local_settings.py` that overrides production settings:
+
+```python
+# local_settings.py (gitignored)
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+]
+
+HEADLESS_FRONTEND_URLS = {
+    "account_confirm_email": "http://localhost:3000/account/verify-email/{key}",
+    "account_reset_password_from_key": "http://localhost:3000/account/password/reset/key/{key}",
+    "account_reset_password": "http://localhost:3000/account/password/reset",
+    "account_signup": "http://localhost:3000/account/signup",
+}
+
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+```
+
+Import it at the end of `settings.py`:
+
+```python
+# settings.py
+
+try:
+    from .local_settings import *
+except ImportError:
+    pass
+```
+
+## Client-Side Configuration
+
+### Browser Client (Same-Origin)
+
+For SPAs on the same domain, no CORS is needed, but you must handle CSRF:
+
+```javascript
+// Get CSRF token from cookie
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+}
+
+const csrfToken = getCookie('csrftoken');
+
+fetch('/_allauth/browser/v1/auth/login', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-CSRFToken': csrfToken,
+  },
+  credentials: 'include',  // Include cookies
+  body: JSON.stringify({
+    email: 'user@example.com',
+    password: 'password123',
+  }),
+});
+```
+
+### App Client (Cross-Origin)
+
+For cross-origin SPAs or mobile apps:
+
+```javascript
+let sessionToken = null;
+
+async function login(email, password) {
+  const response = await fetch('http://localhost:8000/_allauth/app/v1/auth/login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      // No CSRF token needed for app clients
+      ...(sessionToken && { 'X-Session-Token': sessionToken }),
+    },
+    body: JSON.stringify({ email, password }),
+  });
+
+  const data = await response.json();
+  
+  // Store session token from response
+  if (data.meta?.session_token) {
+    sessionToken = data.meta.session_token;
+    localStorage.setItem('sessionToken', sessionToken);
+  }
+  
+  // Or store JWT tokens
+  if (data.meta?.access_token) {
+    localStorage.setItem('accessToken', data.meta.access_token);
+    localStorage.setItem('refreshToken', data.meta.refresh_token);
+  }
+  
+  return data;
+}
+
+async function apiRequest(url) {
+  const response = await fetch(url, {
+    headers: {
+      'X-Session-Token': sessionToken,
+      // Or for JWT:
+      // 'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+  return response.json();
+}
+```
+
+## React Example
+
+Here's a complete example with React:
+
+```javascript
+// api/allauth.js
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const CLIENT_TYPE = 'app';  // or 'browser'
+
+let sessionToken = localStorage.getItem('sessionToken');
+
+async function request(method, path, data = null) {
+  const headers = {
+    'Accept': 'application/json',
+  };
+  
+  // Add session token for app clients
+  if (sessionToken) {
+    headers['X-Session-Token'] = sessionToken;
+  }
+  
+  const options = {
+    method,
+    headers,
+  };
+  
+  if (data) {
+    options.headers['Content-Type'] = 'application/json';
+    options.body = JSON.stringify(data);
+  }
+  
+  const response = await fetch(
+    `${API_BASE}/_allauth/${CLIENT_TYPE}/v1${path}`,
+    options
+  );
+  
+  const result = await response.json();
+  
+  // Update session token if provided
+  if (result.meta?.session_token) {
+    sessionToken = result.meta.session_token;
+    localStorage.setItem('sessionToken', sessionToken);
+  }
+  
+  // Clear token on logout
+  if ([401, 410].includes(result.status)) {
+    sessionToken = null;
+    localStorage.removeItem('sessionToken');
+  }
+  
+  return result;
+}
+
+export const login = (email, password) => 
+  request('POST', '/auth/login', { email, password });
+
+export const signup = (email, password) => 
+  request('POST', '/auth/signup', { email, password });
+
+export const logout = () => 
+  request('DELETE', '/auth/session');
+
+export const getSession = () => 
+  request('GET', '/auth/session');
+
+export const getConfig = () => 
+  request('GET', '/config');
+```
+
+## Troubleshooting
+
+### "CORS policy" Error
+
+If you see:
+```
+Access to fetch at 'http://localhost:8000/_allauth/...' from origin 'http://localhost:3000' 
+has been blocked by CORS policy
+```
+
+**Solutions:**
+1. Verify `corsheaders` is in `INSTALLED_APPS`
+2. Verify `CorsMiddleware` is in `MIDDLEWARE` before `CommonMiddleware`
+3. Check that your frontend origin is in `CORS_ALLOWED_ORIGINS`
+4. Restart the Django server after changing settings
+
+### "X-Session-Token" Not Allowed
+
+If custom headers are blocked:
+```
+Request header field x-session-token is not allowed by Access-Control-Allow-Headers
+```
+
+**Solution:** Add the header to `CORS_ALLOW_HEADERS`:
+
+```python
+from corsheaders.defaults import default_headers
+
+CORS_ALLOW_HEADERS = [
+    *default_headers,
+    'x-session-token',
+    'x-email-verification-key',
+    'x-password-reset-key',
+]
+```
+
+### Credentials Not Included
+
+If session cookies aren't being sent:
+
+**Backend:**
+```python
+CORS_ALLOW_CREDENTIALS = True
+```
+
+**Frontend:**
+```javascript
+fetch(url, {
+  credentials: 'include',  // Required for cookies
+});
+```
+
+### Preflight Request Fails
+
+Browsers send an OPTIONS request before POST/PUT/DELETE. Ensure:
+
+1. Your server handles OPTIONS requests (django-cors-headers does this automatically)
+2. All custom headers are whitelisted
+3. The middleware is configured correctly
+
+## Security Considerations
+
+### Never Use CORS_ALLOW_ALL_ORIGINS in Production
+
+This allows any website to make requests to your API:
+
+```python
+# DANGEROUS: Do not use in production!
+CORS_ALLOW_ALL_ORIGINS = True
+```
+
+Always explicitly whitelist trusted origins.
+
+### Use HTTPS in Production
+
+Always use HTTPS for both frontend and backend in production:
+
+```python
+CORS_ALLOWED_ORIGINS = [
+    "https://app.example.com",  # HTTPS only
+]
+
+SECURE_SSL_REDIRECT = True
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+```
+
+### Limit Exposed Headers
+
+Only expose necessary custom headers:
+
+```python
+CORS_ALLOW_HEADERS = [
+    *default_headers,
+    'x-session-token',
+    'x-email-verification-key',
+    'x-password-reset-key',
+    # Don't add unnecessary headers
+]
+```
+
+## Next Steps
+
+- [Learn about authentication flows](/headless/authentication)
+- [Configure JWT tokens](/headless/configuration#jwt-token-configuration)
+- Review the [django-cors-headers documentation](https://github.com/adamchainz/django-cors-headers)

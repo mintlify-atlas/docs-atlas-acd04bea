@@ -1,0 +1,475 @@
+---
+title: Signals
+description: Django signals for authentication and account events
+---
+
+## Overview
+
+django-allauth provides signals that allow you to hook into various authentication and account management events. These signals enable you to execute custom logic when specific actions occur.
+
+## Authentication Signals
+
+### user_logged_in
+
+Sent when a user successfully logs in.
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user who logged in.
+</ParamField>
+
+```python
+from allauth.account.signals import user_logged_in
+from django.dispatch import receiver
+
+@receiver(user_logged_in)
+def on_user_logged_in(sender, request, user, **kwargs):
+    print(f"User {user.username} logged in from {request.META.get('REMOTE_ADDR')}")
+    # Log login activity
+    LoginLog.objects.create(
+        user=user,
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT')
+    )
+```
+
+---
+
+### user_logged_out
+
+Sent when a user logs out. This is Django's built-in signal, re-exported for convenience.
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user who logged out.
+</ParamField>
+
+```python
+from django.contrib.auth.signals import user_logged_out
+from django.dispatch import receiver
+
+@receiver(user_logged_out)
+def on_user_logged_out(sender, request, user, **kwargs):
+    print(f"User {user.username} logged out")
+```
+
+---
+
+### user_signed_up
+
+Sent when a new user completes signup. Typically followed by `user_logged_in` unless email verification is required.
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The newly created user.
+</ParamField>
+
+```python
+from allauth.account.signals import user_signed_up
+from django.dispatch import receiver
+
+@receiver(user_signed_up)
+def on_user_signed_up(sender, request, user, **kwargs):
+    print(f"New user registered: {user.username}")
+    # Send welcome email
+    send_welcome_email(user)
+    # Create user profile
+    Profile.objects.create(user=user)
+```
+
+---
+
+## Password Signals
+
+### password_set
+
+Sent when a user sets their password for the first time (e.g., social account user adding password).
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user whose password was set.
+</ParamField>
+
+```python
+from allauth.account.signals import password_set
+from django.dispatch import receiver
+
+@receiver(password_set)
+def on_password_set(sender, request, user, **kwargs):
+    print(f"Password set for user: {user.username}")
+    # Notify user via email
+    send_password_set_notification(user)
+```
+
+---
+
+### password_changed
+
+Sent when a user changes their existing password.
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user whose password was changed.
+</ParamField>
+
+```python
+from allauth.account.signals import password_changed
+from django.dispatch import receiver
+
+@receiver(password_changed)
+def on_password_changed(sender, request, user, **kwargs):
+    print(f"Password changed for user: {user.username}")
+    # Send security notification
+    send_password_change_notification(user)
+    # Invalidate other sessions
+    invalidate_other_sessions(user, request.session.session_key)
+```
+
+---
+
+### password_reset
+
+Sent when a user completes password reset via the reset flow.
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user whose password was reset.
+</ParamField>
+
+```python
+from allauth.account.signals import password_reset
+from django.dispatch import receiver
+
+@receiver(password_reset)
+def on_password_reset(sender, request, user, **kwargs):
+    print(f"Password reset for user: {user.username}")
+    # Log security event
+    SecurityLog.objects.create(
+        user=user,
+        event_type='password_reset',
+        ip_address=request.META.get('REMOTE_ADDR')
+    )
+```
+
+---
+
+## Email Signals
+
+### email_confirmed
+
+Sent when a user confirms their email address.
+
+<ParamField path="sender" type="type">
+  The EmailAddress model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="email_address" type="EmailAddress">
+  The confirmed EmailAddress object.
+</ParamField>
+
+```python
+from allauth.account.signals import email_confirmed
+from django.dispatch import receiver
+
+@receiver(email_confirmed)
+def on_email_confirmed(sender, request, email_address, **kwargs):
+    print(f"Email confirmed: {email_address.email}")
+    # Unlock features requiring verified email
+    if email_address.primary:
+        unlock_premium_features(email_address.user)
+```
+
+---
+
+### email_confirmation_sent
+
+Sent when an email confirmation is sent.
+
+<ParamField path="sender" type="type">
+  The EmailConfirmation model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="confirmation" type="EmailConfirmation">
+  The EmailConfirmation object.
+</ParamField>
+
+<ParamField path="signup" type="bool">
+  Whether this is during signup.
+</ParamField>
+
+```python
+from allauth.account.signals import email_confirmation_sent
+from django.dispatch import receiver
+
+@receiver(email_confirmation_sent)
+def on_email_confirmation_sent(sender, request, confirmation, signup, **kwargs):
+    if signup:
+        print(f"Signup confirmation sent to: {confirmation.email_address.email}")
+    else:
+        print(f"Email verification sent to: {confirmation.email_address.email}")
+```
+
+---
+
+### email_added
+
+Sent when a user adds a new email address to their account.
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user adding the email.
+</ParamField>
+
+<ParamField path="email_address" type="EmailAddress">
+  The newly added EmailAddress object.
+</ParamField>
+
+```python
+from allauth.account.signals import email_added
+from django.dispatch import receiver
+
+@receiver(email_added)
+def on_email_added(sender, request, user, email_address, **kwargs):
+    print(f"User {user.username} added email: {email_address.email}")
+```
+
+---
+
+### email_removed
+
+Sent when a user removes an email address from their account.
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user removing the email.
+</ParamField>
+
+<ParamField path="email_address" type="EmailAddress">
+  The removed EmailAddress object.
+</ParamField>
+
+```python
+from allauth.account.signals import email_removed
+from django.dispatch import receiver
+
+@receiver(email_removed)
+def on_email_removed(sender, request, user, email_address, **kwargs):
+    print(f"User {user.username} removed email: {email_address.email}")
+```
+
+---
+
+### email_changed
+
+Sent when a user's primary email address is changed.
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user whose email changed.
+</ParamField>
+
+<ParamField path="from_email_address" type="EmailAddress">
+  The previous primary email address.
+</ParamField>
+
+<ParamField path="to_email_address" type="EmailAddress">
+  The new primary email address.
+</ParamField>
+
+```python
+from allauth.account.signals import email_changed
+from django.dispatch import receiver
+
+@receiver(email_changed)
+def on_email_changed(sender, request, user, from_email_address, to_email_address, **kwargs):
+    print(f"Email changed from {from_email_address.email} to {to_email_address.email}")
+    # Notify at both addresses
+    send_email_change_notification(from_email_address.email, to_email_address.email)
+```
+
+---
+
+## Authentication Step Signal
+
+### authentication_step_completed
+
+Sent when an authentication step is completed (e.g., TOTP, WebAuthn, reauthentication).
+
+<ParamField path="sender" type="type">
+  The User model class.
+</ParamField>
+
+<ParamField path="request" type="HttpRequest">
+  The HTTP request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user completing the step.
+</ParamField>
+
+<ParamField path="method" type="str">
+  The authentication method (e.g., 'totp', 'webauthn', 'password').
+</ParamField>
+
+<ParamField path="**kwargs" type="dict">
+  Additional method-dependent keyword arguments.
+</ParamField>
+
+```python
+from allauth.account.signals import authentication_step_completed
+from django.dispatch import receiver
+
+@receiver(authentication_step_completed)
+def on_auth_step_completed(sender, request, user, method, **kwargs):
+    print(f"User {user.username} completed {method} authentication")
+    # Log MFA usage
+    if method in ['totp', 'webauthn']:
+        MFALog.objects.create(user=user, method=method)
+```
+
+---
+
+## Complete Usage Example
+
+```python
+# signals.py
+from django.dispatch import receiver
+from allauth.account.signals import (
+    user_logged_in,
+    user_signed_up,
+    email_confirmed,
+    password_changed,
+)
+from .models import UserActivity, UserProfile
+
+@receiver(user_signed_up)
+def create_user_profile(sender, request, user, **kwargs):
+    """Create user profile on signup"""
+    UserProfile.objects.create(
+        user=user,
+        signup_ip=request.META.get('REMOTE_ADDR'),
+        referral=request.session.get('referral')
+    )
+
+@receiver(user_logged_in)
+def log_user_login(sender, request, user, **kwargs):
+    """Track user login activity"""
+    UserActivity.objects.create(
+        user=user,
+        action='login',
+        ip_address=request.META.get('REMOTE_ADDR'),
+        user_agent=request.META.get('HTTP_USER_AGENT')
+    )
+
+@receiver(email_confirmed)
+def activate_premium_trial(sender, request, email_address, **kwargs):
+    """Start premium trial on email confirmation"""
+    if email_address.primary:
+        user = email_address.user
+        user.profile.activate_trial(days=30)
+
+@receiver(password_changed)
+def invalidate_sessions_on_password_change(sender, request, user, **kwargs):
+    """Log out other sessions when password changes"""
+    from django.contrib.sessions.models import Session
+    current_session_key = request.session.session_key
+    
+    # Delete all other sessions for this user
+    for session in Session.objects.all():
+        data = session.get_decoded()
+        if data.get('_auth_user_id') == str(user.pk):
+            if session.session_key != current_session_key:
+                session.delete()
+```
+
+```python
+# apps.py
+from django.apps import AppConfig
+
+class MyAppConfig(AppConfig):
+    name = 'myapp'
+    
+    def ready(self):
+        import myapp.signals  # noqa
+```
+
+## Internal Signals
+
+### _add_email
+
+<Warning>
+This is an internal/private signal used by allauth for internal coordination. Do not rely on this signal as it may change without notice.
+</Warning>
+
+Provides arguments: `sender`, `email`, `user`

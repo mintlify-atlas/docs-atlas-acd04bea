@@ -1,0 +1,467 @@
+---
+title: "Signals"
+description: "Django signals for social authentication events"
+---
+
+django-allauth provides signals to hook into various stages of the social authentication process. All signals are instances of `django.dispatch.Signal`.
+
+## pre_social_login
+
+Sent after a user successfully authenticates via a social provider, but before the login is actually processed.
+
+### When Sent
+
+This signal is emitted for:
+- Social logins (existing accounts)
+- Social signups (new accounts)
+- Connecting additional social accounts to an existing account
+
+### Parameters
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object for the current authentication flow.
+</ParamField>
+
+<ParamField path="sociallogin" type="SocialLogin">
+  The `SocialLogin` instance containing:
+  - `account` - The social account (may be unsaved)
+  - `user` - The user being logged in (may be unsaved)
+  - `token` - OAuth token if available
+  - `email_addresses` - List of email addresses from provider
+</ParamField>
+
+### Use Cases
+
+- Auto-connect social accounts based on email
+- Enforce business rules before login
+- Block authentication based on conditions
+- Populate additional user data
+- Implement custom account linking logic
+
+### Example: Auto-connect by Email
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import pre_social_login
+from allauth.account.models import EmailAddress
+
+@receiver(pre_social_login)
+def link_to_local_user(sender, request, sociallogin, **kwargs):
+    """
+    Auto-connect social accounts to existing users with matching email.
+    """
+    # Skip if user is already logged in or account already exists
+    if sociallogin.is_existing:
+        return
+    
+    # Check if we have a verified email from the provider
+    if not sociallogin.email_addresses:
+        return
+    
+    verified_email = None
+    for email in sociallogin.email_addresses:
+        if email.verified:
+            verified_email = email.email
+            break
+    
+    if not verified_email:
+        return
+    
+    # Look for existing user with this email
+    try:
+        email_address = EmailAddress.objects.get(
+            email__iexact=verified_email,
+            verified=True
+        )
+        # Connect this social account to the existing user
+        sociallogin.connect(request, email_address.user)
+    except EmailAddress.DoesNotExist:
+        pass
+```
+
+### Example: Block Authentication
+
+```python
+from django.dispatch import receiver
+from django.core.exceptions import PermissionDenied
+from allauth.socialaccount.signals import pre_social_login
+
+@receiver(pre_social_login)
+def check_domain_whitelist(sender, request, sociallogin, **kwargs):
+    """
+    Only allow authentication from specific email domains.
+    """
+    allowed_domains = ['company.com', 'partner.com']
+    
+    for email_address in sociallogin.email_addresses:
+        domain = email_address.email.split('@')[1]
+        if domain in allowed_domains:
+            return
+    
+    raise PermissionDenied(
+        'Only email addresses from approved domains are allowed.'
+    )
+```
+
+### Example: Populate User Profile
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import pre_social_login
+
+@receiver(pre_social_login)
+def populate_profile(sender, request, sociallogin, **kwargs):
+    """
+    Populate user profile from social account data.
+    """
+    if sociallogin.is_existing:
+        return
+    
+    user = sociallogin.user
+    extra_data = sociallogin.account.extra_data
+    
+    # For new accounts, populate profile from provider data
+    if sociallogin.account.provider == 'github':
+        user.profile.bio = extra_data.get('bio', '')
+        user.profile.location = extra_data.get('location', '')
+        user.profile.website = extra_data.get('blog', '')
+    
+    elif sociallogin.account.provider == 'google':
+        user.profile.picture = extra_data.get('picture', '')
+        user.profile.locale = extra_data.get('locale', '')
+```
+
+---
+
+## social_account_added
+
+Sent after a user successfully connects a social account to their local account.
+
+### When Sent
+
+This signal is emitted when:
+- A logged-in user adds a new social account connection
+- Auto-connection happens via email matching
+
+### Parameters
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ParamField path="sociallogin" type="SocialLogin">
+  The `SocialLogin` instance for the newly connected account.
+</ParamField>
+
+### Use Cases
+
+- Send notification emails
+- Log account connections
+- Update user permissions
+- Trigger webhooks
+- Sync data with external systems
+
+### Example: Log Connections
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import social_account_added
+import logging
+
+logger = logging.getLogger(__name__)
+
+@receiver(social_account_added)
+def log_social_account_added(sender, request, sociallogin, **kwargs):
+    """
+    Log when users connect social accounts.
+    """
+    logger.info(
+        f'User {sociallogin.user.email} connected {sociallogin.account.provider} '
+        f'account (uid: {sociallogin.account.uid})'
+    )
+```
+
+### Example: Send Custom Notification
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import social_account_added
+from django.core.mail import send_mail
+
+@receiver(social_account_added)
+def notify_account_connected(sender, request, sociallogin, **kwargs):
+    """
+    Send custom notification when account is connected.
+    """
+    user = sociallogin.user
+    provider_name = sociallogin.account.get_provider().name
+    
+    send_mail(
+        subject=f'{provider_name} Account Connected',
+        message=(
+            f'Your {provider_name} account has been successfully connected. '
+            f'You can now use it to sign in.'
+        ),
+        from_email='noreply@example.com',
+        recipient_list=[user.email],
+    )
+```
+
+### Example: Trigger Webhook
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import social_account_added
+import requests
+
+@receiver(social_account_added)
+def webhook_account_connected(sender, request, sociallogin, **kwargs):
+    """
+    Notify external service when account is connected.
+    """
+    requests.post(
+        'https://api.example.com/webhooks/account-connected',
+        json={
+            'user_id': sociallogin.user.id,
+            'provider': sociallogin.account.provider,
+            'timestamp': sociallogin.account.date_joined.isoformat(),
+        }
+    )
+```
+
+---
+
+## social_account_updated
+
+Sent when a user connects an already existing social account (token refresh and data update).
+
+### When Sent
+
+This signal is emitted when:
+- User logs in with a social account that's already connected
+- The account's token and extra_data are refreshed
+
+### Parameters
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ParamField path="sociallogin" type="SocialLogin">
+  The `SocialLogin` instance with updated token and data.
+</ParamField>
+
+### Use Cases
+
+- Sync updated profile data
+- Track login frequency
+- Update cached user information
+- Monitor token refreshes
+
+### Example: Sync Profile Updates
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import social_account_updated
+
+@receiver(social_account_updated)
+def sync_profile_updates(sender, request, sociallogin, **kwargs):
+    """
+    Update local profile when social account data changes.
+    """
+    account = sociallogin.account
+    user = account.user
+    extra_data = account.extra_data
+    
+    if account.provider == 'github':
+        # Update profile if GitHub data changed
+        if user.profile.github_username != extra_data.get('login'):
+            user.profile.github_username = extra_data.get('login')
+            user.profile.save()
+```
+
+### Example: Track Login Analytics
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import social_account_updated
+from django.utils import timezone
+
+@receiver(social_account_updated)
+def track_social_login(sender, request, sociallogin, **kwargs):
+    """
+    Track analytics for social logins.
+    """
+    from myapp.models import LoginEvent
+    
+    LoginEvent.objects.create(
+        user=sociallogin.user,
+        provider=sociallogin.account.provider,
+        timestamp=timezone.now(),
+        ip_address=request.META.get('REMOTE_ADDR'),
+    )
+```
+
+---
+
+## social_account_removed
+
+Sent after a user disconnects a social account from their local account.
+
+### When Sent
+
+This signal is emitted when:
+- User explicitly disconnects a social account
+- Admin deletes a social account connection
+
+### Parameters
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ParamField path="socialaccount" type="SocialAccount">
+  The `SocialAccount` instance that was removed.
+  
+  **Note:** This is a `SocialAccount`, not a `SocialLogin`.
+</ParamField>
+
+### Use Cases
+
+- Send notification emails
+- Log disconnections for audit trail
+- Clean up related data
+- Revoke provider tokens
+- Trigger security alerts
+
+### Example: Log Disconnections
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import social_account_removed
+import logging
+
+logger = logging.getLogger(__name__)
+
+@receiver(social_account_removed)
+def log_account_removed(sender, request, socialaccount, **kwargs):
+    """
+    Log when users disconnect social accounts.
+    """
+    logger.warning(
+        f'User {socialaccount.user.email} disconnected {socialaccount.provider} '
+        f'account (uid: {socialaccount.uid})'
+    )
+```
+
+### Example: Send Security Alert
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import social_account_removed
+from django.core.mail import send_mail
+
+@receiver(social_account_removed)
+def alert_account_removed(sender, request, socialaccount, **kwargs):
+    """
+    Send security alert when social account is disconnected.
+    """
+    user = socialaccount.user
+    provider_name = socialaccount.get_provider().name
+    
+    send_mail(
+        subject=f'Security Alert: {provider_name} Account Disconnected',
+        message=(
+            f'Your {provider_name} account has been disconnected from your account. '
+            f'If you did not make this change, please contact support immediately.'
+        ),
+        from_email='security@example.com',
+        recipient_list=[user.email],
+    )
+```
+
+### Example: Clean Up Related Data
+
+```python
+from django.dispatch import receiver
+from allauth.socialaccount.signals import social_account_removed
+
+@receiver(social_account_removed)
+def cleanup_social_data(sender, request, socialaccount, **kwargs):
+    """
+    Clean up data associated with the disconnected account.
+    """
+    # Remove cached profile pictures from this provider
+    if socialaccount.provider == 'google':
+        user = socialaccount.user
+        if user.profile.avatar_source == 'google':
+            user.profile.avatar = None
+            user.profile.avatar_source = None
+            user.profile.save()
+```
+
+## Signal Registration
+
+Signals should be registered in your app's `apps.py`:
+
+```python
+# myapp/apps.py
+from django.apps import AppConfig
+
+class MyAppConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'myapp'
+    
+    def ready(self):
+        import myapp.signals  # noqa
+```
+
+```python
+# myapp/signals.py
+from django.dispatch import receiver
+from allauth.socialaccount.signals import (
+    pre_social_login,
+    social_account_added,
+    social_account_updated,
+    social_account_removed,
+)
+
+# Your signal handlers here
+```
+
+## Testing Signals
+
+```python
+from django.test import TestCase, RequestFactory
+from allauth.socialaccount.signals import social_account_added
+from allauth.socialaccount.models import SocialLogin, SocialAccount
+
+class SocialSignalsTestCase(TestCase):
+    
+    def test_social_account_added_signal(self):
+        # Track if signal was called
+        self.signal_called = False
+        
+        def handler(sender, request, sociallogin, **kwargs):
+            self.signal_called = True
+        
+        # Connect signal
+        social_account_added.connect(handler)
+        
+        try:
+            # Create and connect social account
+            account = SocialAccount.objects.create(
+                user=self.user,
+                provider='google',
+                uid='123456'
+            )
+            sociallogin = SocialLogin(account=account, user=self.user)
+            
+            request = RequestFactory().get('/')
+            sociallogin.connect(request, self.user)
+            
+            # Verify signal was called
+            self.assertTrue(self.signal_called)
+        finally:
+            social_account_added.disconnect(handler)
+```

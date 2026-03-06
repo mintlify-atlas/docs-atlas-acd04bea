@@ -1,0 +1,242 @@
+---
+title: Social Account Introduction
+description: Overview of django-allauth's social authentication capabilities
+---
+
+## What is Social Authentication?
+
+A third-party ("social") account is a user account where authentication is delegated to an external identity provider like Google, GitHub, or Facebook. The `allauth.socialaccount` app provides comprehensive support for managing social authentication in your Django application.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Multiple Providers" icon="plug">
+    Support for 100+ authentication providers including OAuth, OAuth2, OIDC, and SAML
+  </Card>
+  
+  <Card title="Account Linking" icon="link">
+    Connect one or more social accounts to a local user account
+  </Card>
+  
+  <Card title="Auto Signup" icon="bolt">
+    Optional instant signup for social accounts - no signup form required
+  </Card>
+  
+  <Card title="Flexible Configuration" icon="gear">
+    Configure providers via Django admin or settings.py
+  </Card>
+</CardGroup>
+
+## Core Capabilities
+
+### Social Account Management
+
+- **Connect Multiple Accounts**: Users can link multiple social providers to a single local account
+- **Disconnect Accounts**: Users can remove social account connections (requires setting a password if only the local account remains)
+- **Account Merging**: Automatically merge social accounts with existing local accounts based on verified email addresses
+
+### Authentication Protocols
+
+django-allauth supports all major authentication protocols:
+
+- **OAuth 1.0a**: Legacy OAuth protocol (Twitter, Flickr)
+- **OAuth 2.0**: Modern OAuth standard (Google, GitHub, Facebook)
+- **OpenID Connect**: Identity layer built on OAuth 2.0
+- **SAML 2.0**: Enterprise SSO protocol
+
+## Installation
+
+To use social authentication, install the `socialaccount` extras:
+
+```bash
+pip install "django-allauth[socialaccount]"
+```
+
+For specific protocols, you may need additional extras:
+
+```bash
+# For SAML support
+pip install "django-allauth[saml]"
+```
+
+## Quick Start
+
+### 1. Add to INSTALLED_APPS
+
+Add the socialaccount app and your desired providers to `INSTALLED_APPS`:
+
+```python
+INSTALLED_APPS = [
+    # ...
+    'django.contrib.sites',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    # Add providers
+    'allauth.socialaccount.providers.google',
+    'allauth.socialaccount.providers.github',
+]
+```
+
+### 2. Run Migrations
+
+```bash
+python manage.py migrate
+```
+
+### 3. Configure a Provider
+
+Configure your first provider in `settings.py`:
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APPS': [
+            {
+                'client_id': 'your-client-id',
+                'secret': 'your-client-secret',
+                'key': '',
+            },
+        ],
+        'SCOPE': [
+            'profile',
+            'email',
+        ],
+    }
+}
+```
+
+### 4. Add URLs
+
+The allauth URLs are typically included automatically, but ensure they're in your `urls.py`:
+
+```python
+from django.urls import path, include
+
+urlpatterns = [
+    # ...
+    path('accounts/', include('allauth.urls')),
+]
+```
+
+### 5. Add Login Links
+
+In your templates, add social login links:
+
+```html
+{% load socialaccount %}
+
+<a href="{% provider_login_url 'google' %}">Login with Google</a>
+<a href="{% provider_login_url 'github' %}">Login with GitHub</a>
+```
+
+## Data Models
+
+django-allauth uses several models to manage social accounts:
+
+### SocialApp
+
+Stores provider configuration including:
+- `provider`: Provider type (e.g., "google", "github")
+- `provider_id`: For subproviders (OIDC, SAML)
+- `client_id`: OAuth client ID or app ID
+- `secret`: Client secret or consumer secret
+- `settings`: JSON field for provider-specific settings
+
+### SocialAccount
+
+Links users to their social accounts:
+- `user`: Foreign key to your User model
+- `provider`: Provider identifier
+- `uid`: Unique identifier from the provider
+- `extra_data`: JSON field storing profile data from the provider
+- `last_login`: Timestamp of last login
+
+### SocialToken
+
+Stores OAuth tokens (when `SOCIALACCOUNT_STORE_TOKENS` is enabled):
+- `account`: Foreign key to SocialAccount
+- `token`: Access token
+- `token_secret`: Refresh token (OAuth2) or token secret (OAuth1)
+- `expires_at`: Token expiration timestamp
+
+## Authentication Flow
+
+1. **User Initiates Login**: User clicks a social login link
+2. **Redirect to Provider**: User is redirected to the provider's authorization page
+3. **User Authorizes**: User grants permissions to your application
+4. **Callback**: Provider redirects back with authorization code
+5. **Token Exchange**: Your app exchanges the code for an access token
+6. **Fetch Profile**: Your app retrieves user profile data
+7. **Account Lookup**: System checks if social account exists
+8. **Create or Link**: New account is created or linked to existing user
+9. **Login**: User is authenticated and logged in
+
+## Common Use Cases
+
+### Social-Only Authentication
+
+Disable local accounts entirely:
+
+```python
+SOCIALACCOUNT_ONLY = True
+```
+
+### Auto-Signup
+
+Bypass signup forms when possible:
+
+```python
+SOCIALACCOUNT_AUTO_SIGNUP = True
+```
+
+### Email-Based Account Matching
+
+Automatically link accounts with matching verified emails:
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'EMAIL_AUTHENTICATION': True,
+        'EMAIL_AUTHENTICATION_AUTO_CONNECT': True,
+    }
+}
+```
+
+### Store OAuth Tokens
+
+Save access tokens for making API calls:
+
+```python
+SOCIALACCOUNT_STORE_TOKENS = True
+```
+
+## Security Considerations
+
+<Warning>
+  **Trusted Providers Only**: Only enable `EMAIL_AUTHENTICATION` for fully trusted providers. An untrustworthy provider could fabricate email addresses to gain access to user accounts.
+</Warning>
+
+<Warning>
+  **HTTPS Required**: Most providers require HTTPS for production. Configure SSL/TLS properly before deploying.
+</Warning>
+
+<Info>
+  **POST for Login**: For security, social login endpoints should require POST requests. Avoid enabling `SOCIALACCOUNT_LOGIN_ON_GET` unless necessary.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/socialaccount/configuration">
+    Learn about all available settings and configuration options
+  </Card>
+  
+  <Card title="Providers" icon="plug" href="/socialaccount/providers">
+    Explore the 100+ supported authentication providers
+  </Card>
+  
+  <Card title="Advanced Usage" icon="code" href="/socialaccount/advanced">
+    Customize adapters, scopes, and provider behavior
+  </Card>
+</CardGroup>

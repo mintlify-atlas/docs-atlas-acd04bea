@@ -1,0 +1,375 @@
+---
+title: TOTP Authentication
+description: Set up Time-based One-Time Password authentication using authenticator apps
+---
+
+TOTP (Time-based One-Time Password) authentication allows users to generate temporary codes using authenticator apps like Google Authenticator, Authy, 1Password, or Microsoft Authenticator.
+
+## How It Works
+
+TOTP generates six-digit codes that change every 30 seconds based on:
+- A shared secret key stored in your database
+- The current time
+- The HMAC-SHA1 algorithm
+
+When a user sets up TOTP:
+1. A random secret is generated
+2. The secret is encoded as a QR code
+3. User scans the QR code with their authenticator app
+4. User enters a code from their app to verify setup
+5. The secret is encrypted and stored in the database
+
+## Configuration
+
+TOTP is enabled by default. Configure it in `settings.py`:
+
+```python settings.py
+# TOTP is included by default
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+
+# Customize TOTP settings
+MFA_TOTP_PERIOD = 30  # Code validity period in seconds
+MFA_TOTP_DIGITS = 6   # Number of digits in the code
+MFA_TOTP_ISSUER = "My App"  # Appears in authenticator apps
+MFA_TOTP_TOLERANCE = 1  # Accept codes from ±1 time period
+```
+
+## Settings Reference
+
+### `MFA_TOTP_PERIOD`
+
+**Default:** `30`
+
+The number of seconds a TOTP code remains valid.
+
+```python
+MFA_TOTP_PERIOD = 30  # Standard 30-second window
+```
+
+### `MFA_TOTP_DIGITS`
+
+**Default:** `6`
+
+The number of digits in generated codes. Most authenticator apps support 6 or 8 digits.
+
+```python
+MFA_TOTP_DIGITS = 6  # Standard 6-digit codes
+```
+
+### `MFA_TOTP_ISSUER`
+
+**Default:** `""` (uses site name)
+
+The issuer name displayed in authenticator apps. Helps users identify which account the code is for.
+
+```python
+MFA_TOTP_ISSUER = "MyCompany Production"
+```
+
+### `MFA_TOTP_TOLERANCE`
+
+**Default:** `0`
+
+Number of time periods (past and future) to accept. Helps with clock drift between server and client.
+
+```python
+MFA_TOTP_TOLERANCE = 1  # Accept previous and next code
+```
+
+<Warning>
+Higher tolerance values are less secure but more tolerant of clock drift. Use `0` for maximum security or `1` for better user experience.
+</Warning>
+
+## URL Endpoints
+
+TOTP URLs are available at:
+
+- `/accounts/mfa/totp/activate/` - Activate TOTP authentication
+- `/accounts/mfa/totp/deactivate/` - Deactivate TOTP authentication
+
+## Activation Flow
+
+Users can activate TOTP through the `ActivateTOTPView`:
+
+```python
+from allauth.mfa.totp.views import ActivateTOTPView
+
+# The view handles:
+# 1. Generating a secret
+# 2. Creating a QR code
+# 3. Validating the user's first code
+# 4. Storing the encrypted secret
+```
+
+### Template Context
+
+The activation template receives:
+
+```python
+{
+    'form': ActivateTOTPForm,
+    'totp_url': 'otpauth://totp/...',  # The TOTP URI
+    'totp_svg': '<svg>...</svg>',       # QR code as SVG
+    'totp_svg_data_uri': 'data:image/svg+xml;base64,...'  # Data URI
+}
+```
+
+### Custom Template Example
+
+```html templates/mfa/totp/activate_form.html
+{% extends "account/base.html" %}
+
+{% block content %}
+  <h1>Set Up Two-Factor Authentication</h1>
+  
+  <p>Scan this QR code with your authenticator app:</p>
+  
+  <div class="qr-code">
+    <img src="{{ totp_svg_data_uri }}" alt="TOTP QR Code" />
+  </div>
+  
+  <p>Or manually enter this key: <code>{{ form.secret }}</code></p>
+  
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Verify and Activate</button>
+  </form>
+{% endblock %}
+```
+
+## Programmatic Usage
+
+### Generate and Validate Codes
+
+```python
+from allauth.mfa.totp.internal.auth import (
+    generate_totp_secret,
+    validate_totp_code,
+    hotp_value,
+    format_hotp_value
+)
+
+# Generate a new secret
+secret = generate_totp_secret(length=20)
+# Returns base32-encoded string like: 'JBSWY3DPEHPK3PXP'
+
+# Validate a user-provided code
+code = "123456"
+is_valid = validate_totp_code(secret, code)
+
+# Generate the current code (for testing)
+import time
+current_time = int(time.time())
+counter = current_time // 30  # Using default TOTP_PERIOD
+value = hotp_value(secret, counter)
+current_code = format_hotp_value(value)
+```
+
+### Activate TOTP for a User
+
+```python
+from allauth.mfa.totp.internal.auth import TOTP
+from allauth.mfa.models import Authenticator
+
+# Activate TOTP for a user
+user = request.user
+secret = generate_totp_secret()
+
+# Verify user has entered correct code
+user_code = request.POST.get('code')
+if validate_totp_code(secret, user_code):
+    totp = TOTP.activate(user, secret)
+    # TOTP is now active for this user
+```
+
+### Check if User Has TOTP Enabled
+
+```python
+from allauth.mfa.models import Authenticator
+
+has_totp = Authenticator.objects.filter(
+    user=user,
+    type=Authenticator.Type.TOTP
+).exists()
+```
+
+### Validate TOTP During Login
+
+```python
+from allauth.mfa.models import Authenticator
+
+# Get user's TOTP authenticator
+authenticator = Authenticator.objects.get(
+    user=user,
+    type=Authenticator.Type.TOTP
+)
+
+# Validate code
+totp = authenticator.wrap()
+if totp.validate_code(user_code):
+    # Code is valid
+    authenticator.record_usage()
+```
+
+## Customizing Forms
+
+Override the default forms in `settings.py`:
+
+```python settings.py
+MFA_FORMS = {
+    'activate_totp': 'myapp.forms.CustomActivateTOTPForm',
+    'deactivate_totp': 'myapp.forms.CustomDeactivateTOTPForm',
+}
+```
+
+### Custom Activation Form
+
+```python myapp/forms.py
+from allauth.mfa.totp.forms import ActivateTOTPForm
+
+class CustomActivateTOTPForm(ActivateTOTPForm):
+    def clean_code(self):
+        code = super().clean_code()
+        # Add custom validation
+        return code
+```
+
+## Customizing the TOTP URL
+
+Override the adapter to customize QR code generation:
+
+```python myapp/adapter.py
+from allauth.mfa.adapter import DefaultMFAAdapter
+
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def get_totp_label(self, user):
+        # Customize the label shown in authenticator apps
+        return f"{user.email} - Production"
+    
+    def get_totp_issuer(self):
+        # Customize the issuer name
+        return "MyCompany Inc."
+    
+    def build_totp_url(self, user, secret):
+        # Fully customize the otpauth:// URL
+        url = super().build_totp_url(user, secret)
+        # Modify as needed
+        return url
+```
+
+```python settings.py
+MFA_ADAPTER = 'myapp.adapter.CustomMFAAdapter'
+```
+
+## Security Considerations
+
+### Secret Storage
+
+TOTP secrets are stored encrypted in the database:
+
+```python
+from allauth.mfa.utils import encrypt, decrypt
+
+# Secrets are automatically encrypted
+encrypted_secret = encrypt(secret)
+
+# And decrypted when needed
+original_secret = decrypt(encrypted_secret)
+```
+
+To add custom encryption, override the adapter:
+
+```python
+from allauth.mfa.adapter import DefaultMFAAdapter
+from cryptography.fernet import Fernet
+
+class EncryptedMFAAdapter(DefaultMFAAdapter):
+    def encrypt(self, text):
+        # Use your encryption method
+        cipher = Fernet(settings.MFA_ENCRYPTION_KEY)
+        return cipher.encrypt(text.encode()).decode()
+    
+    def decrypt(self, encrypted_text):
+        cipher = Fernet(settings.MFA_ENCRYPTION_KEY)
+        return cipher.decrypt(encrypted_text.encode()).decode()
+```
+
+### Code Reuse Prevention
+
+TOTP codes are cached after use to prevent replay attacks:
+
+```python
+# From totp/internal/auth.py
+def validate_code(self, code):
+    if self._is_code_used(code):
+        return False  # Code already used
+    
+    if validate_totp_code(secret, code):
+        self._mark_code_used(code)  # Cache for TOTP_PERIOD seconds
+        return True
+    return False
+```
+
+## Development & Testing
+
+### Bypass Code for Testing
+
+<Warning>
+Only use this in development environments with `DEBUG = True`.
+</Warning>
+
+```python settings.py
+# Only works when DEBUG = True
+MFA_TOTP_INSECURE_BYPASS_CODE = "123456"
+```
+
+This allows you to use `123456` as a valid code during testing, regardless of the actual TOTP value.
+
+## Recovery Codes
+
+When users activate TOTP, recovery codes are automatically generated. This ensures users can access their account if they lose their authenticator device.
+
+[Learn more about recovery codes →](/mfa/recovery-codes)
+
+## Common Issues
+
+### Clock Drift
+
+If users report codes not working:
+
+```python
+# Increase tolerance to accept codes from adjacent time periods
+MFA_TOTP_TOLERANCE = 1  # Accept ±30 seconds
+```
+
+### QR Code Not Displaying
+
+Ensure `qrcode` is installed:
+
+```bash
+pip install "django-allauth[mfa]"
+```
+
+### Codes Not Accepted
+
+Check that `django.contrib.messages` is installed and configured:
+
+```python
+INSTALLED_APPS = [
+    'django.contrib.messages',
+    # ...
+]
+
+MIDDLEWARE = [
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    # ...
+]
+```
+
+## Related
+
+- [Recovery Codes](/mfa/recovery-codes) - Backup codes for account recovery
+- [WebAuthn](/mfa/webauthn) - Hardware key authentication
+- [Configuration](/configuration/mfa) - All MFA settings

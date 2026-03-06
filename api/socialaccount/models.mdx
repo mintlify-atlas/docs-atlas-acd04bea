@@ -1,0 +1,598 @@
+---
+title: "Models"
+description: "Django models for social authentication"
+---
+
+## SocialApp
+
+Represents a social application (OAuth client) configured for authentication.
+
+### Fields
+
+<ParamField path="provider" type="CharField">
+  The provider type (e.g., "google", "github", "saml").
+  
+  **Max length:** 30 characters
+</ParamField>
+
+<ParamField path="provider_id" type="CharField">
+  For providers that support subproviders (OpenID Connect, SAML), this ID identifies the specific instance. Social accounts originating from this app will have their `provider` field set to `provider_id` if available, otherwise `provider`.
+  
+  **Max length:** 200 characters  
+  **Optional:** Yes
+</ParamField>
+
+<ParamField path="name" type="CharField">
+  Human-readable name for the application.
+  
+  **Max length:** 40 characters
+</ParamField>
+
+<ParamField path="client_id" type="CharField">
+  OAuth client ID, app ID, or consumer key.
+  
+  **Max length:** 191 characters
+</ParamField>
+
+<ParamField path="secret" type="CharField">
+  API secret, client secret, or consumer secret.
+  
+  **Max length:** 191 characters  
+  **Optional:** Yes
+</ParamField>
+
+<ParamField path="key" type="CharField">
+  Additional key field for providers that require it.
+  
+  **Max length:** 191 characters  
+  **Optional:** Yes
+</ParamField>
+
+<ParamField path="settings" type="JSONField">
+  Additional provider-specific settings stored as JSON.
+  
+  **Default:** `{}`
+</ParamField>
+
+<ParamField path="sites" type="ManyToManyField">
+  Associated Django sites where this app can be used. Only available when `django.contrib.sites` is enabled.
+  
+  **Related model:** `sites.Site`  
+  **Optional:** Yes
+</ParamField>
+
+### Methods
+
+#### get_provider()
+
+```python
+def get_provider(request) -> Provider
+```
+
+Returns the provider instance for this social app.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ResponseField name="return" type="Provider">
+  The provider instance configured with this app.
+</ResponseField>
+
+**Example:**
+
+```python
+app = SocialApp.objects.get(provider="google")
+provider = app.get_provider(request)
+```
+
+### Manager Methods
+
+#### objects.on_site()
+
+```python
+SocialApp.objects.on_site(request) -> QuerySet
+```
+
+Filters social apps available for the current site.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ResponseField name="return" type="QuerySet">
+  Social apps configured for the current site, or all apps if sites framework is disabled.
+</ResponseField>
+
+**Example:**
+
+```python
+available_apps = SocialApp.objects.on_site(request)
+```
+
+---
+
+## SocialAccount
+
+Represents a user's account with a social provider.
+
+### Fields
+
+<ParamField path="user" type="ForeignKey">
+  The local user account associated with this social account.
+  
+  **Related model:** `AUTH_USER_MODEL`  
+  **On delete:** CASCADE
+</ParamField>
+
+<ParamField path="provider" type="CharField">
+  The provider identifier. For accounts from a `SocialApp`, this equals the app's `provider_id` if available, otherwise `provider`.
+  
+  **Max length:** 200 characters
+</ParamField>
+
+<ParamField path="uid" type="CharField">
+  The unique identifier for the user at the provider. This is the provider's user ID.
+  
+  **Max length:** Configurable via `SOCIALACCOUNT_UID_MAX_LENGTH` (default: 191)  
+  **Unique:** Together with `provider`
+</ParamField>
+
+<ParamField path="last_login" type="DateTimeField">
+  Timestamp of the last login using this social account.
+  
+  **Auto-updated:** Yes
+</ParamField>
+
+<ParamField path="date_joined" type="DateTimeField">
+  Timestamp when this social account was first connected.
+  
+  **Auto-created:** Yes
+</ParamField>
+
+<ParamField path="extra_data" type="JSONField">
+  Additional data from the provider (profile information, etc.).
+  
+  **Default:** `{}`
+</ParamField>
+
+### Methods
+
+#### authenticate()
+
+```python
+def authenticate() -> User
+```
+
+Authenticates and returns the user associated with this social account.
+
+<ResponseField name="return" type="User">
+  The authenticated user object.
+</ResponseField>
+
+**Example:**
+
+```python
+account = SocialAccount.objects.get(provider="google", uid="123456")
+user = account.authenticate()
+```
+
+#### get_profile_url()
+
+```python
+def get_profile_url() -> str
+```
+
+Returns the profile URL for this account on the social provider's site.
+
+<ResponseField name="return" type="str">
+  The profile URL, or empty string if not available.
+</ResponseField>
+
+**Example:**
+
+```python
+profile_url = account.get_profile_url()
+# "https://github.com/username"
+```
+
+#### get_avatar_url()
+
+```python
+def get_avatar_url() -> str
+```
+
+Returns the avatar/profile picture URL from the provider.
+
+<ResponseField name="return" type="str">
+  The avatar URL, or empty string if not available.
+</ResponseField>
+
+**Example:**
+
+```python
+avatar_url = account.get_avatar_url()
+# "https://avatars.githubusercontent.com/u/123456"
+```
+
+#### get_provider()
+
+```python
+def get_provider(request=None) -> Provider
+```
+
+Returns the provider instance for this social account.
+
+<ParamField path="request" type="HttpRequest">
+  Optional Django request object.
+</ParamField>
+
+<ResponseField name="return" type="Provider">
+  The provider instance.
+</ResponseField>
+
+**Example:**
+
+```python
+provider = account.get_provider()
+print(provider.name)  # "Google"
+```
+
+#### get_provider_account()
+
+```python
+def get_provider_account() -> ProviderAccount
+```
+
+Returns the provider-specific account wrapper with additional functionality.
+
+<ResponseField name="return" type="ProviderAccount">
+  Provider-specific account object.
+</ResponseField>
+
+**Example:**
+
+```python
+provider_account = account.get_provider_account()
+display_name = provider_account.to_str()
+```
+
+---
+
+## SocialToken
+
+Stores OAuth tokens for social accounts.
+
+### Fields
+
+<ParamField path="app" type="ForeignKey">
+  The social application this token is for.
+  
+  **Related model:** `SocialApp`  
+  **On delete:** SET_NULL  
+  **Optional:** Yes
+</ParamField>
+
+<ParamField path="account" type="ForeignKey">
+  The social account this token belongs to.
+  
+  **Related model:** `SocialAccount`  
+  **On delete:** CASCADE
+</ParamField>
+
+<ParamField path="token" type="TextField">
+  The OAuth token. For OAuth1, this is the `oauth_token`. For OAuth2, this is the access token.
+</ParamField>
+
+<ParamField path="token_secret" type="TextField">
+  The OAuth token secret. For OAuth1, this is the `oauth_token_secret`. For OAuth2, this is the refresh token.
+  
+  **Optional:** Yes
+</ParamField>
+
+<ParamField path="expires_at" type="DateTimeField">
+  When the access token expires.
+  
+  **Optional:** Yes
+</ParamField>
+
+### Meta
+
+<ParamField path="unique_together" type="tuple">
+  Combination of `app` and `account` must be unique.
+</ParamField>
+
+**Example:**
+
+```python
+token = SocialToken.objects.get(account=account)
+if token.expires_at and token.expires_at < timezone.now():
+    # Token expired, refresh needed
+    pass
+```
+
+---
+
+## SocialLogin
+
+Represents a social user in the process of being logged in. This is a non-model class used during authentication flow.
+
+### Attributes
+
+<ParamField path="account" type="SocialAccount">
+  The social account being logged in. May be unsaved.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The local user being logged in. May be unsaved.
+</ParamField>
+
+<ParamField path="token" type="SocialToken">
+  Optional access token from the authentication handshake.
+</ParamField>
+
+<ParamField path="email_addresses" type="List[EmailAddress]">
+  Email addresses retrieved from the provider.
+</ParamField>
+
+<ParamField path="state" type="dict">
+  State preserved during authentication. May be included in URLs, so do not store secrets here.
+</ParamField>
+
+<ParamField path="provider" type="Provider">
+  The provider instance handling this login.
+</ParamField>
+
+<ParamField path="phone" type="str">
+  Phone number retrieved from the provider, if available.
+</ParamField>
+
+<ParamField path="phone_verified" type="bool">
+  Whether the phone number has been verified by the provider.
+</ParamField>
+
+### Methods
+
+#### \_\_init\_\_()
+
+```python
+def __init__(
+    user=None,
+    account: Optional[SocialAccount] = None,
+    token: Optional[SocialToken] = None,
+    email_addresses: Optional[List[EmailAddress]] = None,
+    provider=None,
+    phone: Optional[str] = None,
+    phone_verified: bool = False,
+)
+```
+
+Creates a new SocialLogin instance.
+
+**Example:**
+
+```python
+from allauth.socialaccount.models import SocialLogin, SocialAccount
+
+account = SocialAccount(provider="google", uid="123456")
+sociallogin = SocialLogin(account=account, provider=provider)
+```
+
+#### connect()
+
+```python
+def connect(request, user) -> None
+```
+
+Connects this social account to an existing user.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ParamField path="user" type="User">
+  The user to connect this social account to.
+</ParamField>
+
+**Example:**
+
+```python
+sociallogin.connect(request, request.user)
+```
+
+#### save()
+
+```python
+def save(request, connect: bool = False) -> None
+```
+
+Saves the social account and user to the database.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ParamField path="connect" type="bool">
+  Whether this is a connection to an existing user.
+  
+  **Default:** False
+</ParamField>
+
+**Example:**
+
+```python
+sociallogin.save(request)
+```
+
+#### lookup()
+
+```python
+def lookup() -> None
+```
+
+Looks up the existing local user account this social login points to, if any. Updates `self.user` if found.
+
+**Example:**
+
+```python
+sociallogin.lookup()
+if sociallogin.is_existing:
+    print(f"Found existing user: {sociallogin.user}")
+```
+
+#### serialize()
+
+```python
+def serialize() -> Dict[str, Any]
+```
+
+Serializes the social login to a dictionary.
+
+<ResponseField name="return" type="dict">
+  Dictionary containing all social login data.
+</ResponseField>
+
+**Example:**
+
+```python
+data = sociallogin.serialize()
+# Store in session or cache
+request.session['sociallogin'] = data
+```
+
+#### deserialize()
+
+```python
+@classmethod
+def deserialize(cls, data: Dict[str, Any]) -> SocialLogin
+```
+
+Deserializes a social login from a dictionary.
+
+<ParamField path="data" type="dict">
+  Dictionary containing serialized social login data.
+</ParamField>
+
+<ResponseField name="return" type="SocialLogin">
+  The deserialized SocialLogin instance.
+</ResponseField>
+
+**Example:**
+
+```python
+data = request.session.get('sociallogin')
+sociallogin = SocialLogin.deserialize(data)
+```
+
+#### get_redirect_url()
+
+```python
+def get_redirect_url(request) -> Optional[str]
+```
+
+Returns the URL to redirect to after login.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ResponseField name="return" type="str">
+  The redirect URL, or None.
+</ResponseField>
+
+**Example:**
+
+```python
+redirect_url = sociallogin.get_redirect_url(request)
+```
+
+#### stash_state()
+
+```python
+@classmethod
+def stash_state(cls, request, state: Optional[Dict[str, Any]] = None) -> str
+```
+
+Stashes state in the session and returns a state ID.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ParamField path="state" type="dict">
+  State dictionary to stash. If None, extracts state from request.
+</ParamField>
+
+<ResponseField name="return" type="str">
+  State ID that can be used to retrieve the state later.
+</ResponseField>
+
+**Example:**
+
+```python
+state = {'next': '/dashboard/', 'process': 'login'}
+state_id = SocialLogin.stash_state(request, state)
+```
+
+#### unstash_state()
+
+```python
+@classmethod
+def unstash_state(cls, request) -> Optional[Dict[str, Any]]
+```
+
+Retrieves and removes the last stashed state from the session.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ResponseField name="return" type="dict">
+  The unstashed state dictionary.
+</ResponseField>
+
+**Raises:**
+- `PermissionDenied` if no state is found.
+
+**Example:**
+
+```python
+state = SocialLogin.unstash_state(request)
+next_url = state.get('next')
+```
+
+### Properties
+
+#### is_existing
+
+```python
+@property
+def is_existing() -> bool
+```
+
+Returns `False` if this represents a temporary account not yet saved to the database.
+
+**Example:**
+
+```python
+if not sociallogin.is_existing:
+    # This is a new account being created
+    pass
+```
+
+#### is_headless
+
+```python
+@property
+def is_headless() -> bool
+```
+
+Returns `True` if this is a headless (API-based) authentication flow.
+
+**Example:**
+
+```python
+if sociallogin.is_headless:
+    # Return JSON response instead of rendering template
+    pass
+```

@@ -1,0 +1,579 @@
+---
+title: Email Customization
+description: Customize email templates, styling, and sending behavior in django-allauth
+---
+
+## Overview
+
+Django-allauth sends various emails for account verification, password reset, and security notifications. This guide covers how to customize these emails, from simple template changes to advanced sending logic.
+
+## Email Types
+
+Django-allauth sends the following emails:
+
+| Email Type | Purpose | Template Prefix |
+|------------|---------|----------------|
+| Email Confirmation (Signup) | Verify email during signup | `account/email/email_confirmation_signup_*` |
+| Email Confirmation | Verify additional emails | `account/email/email_confirmation_*` |
+| Password Reset | Reset forgotten password | `account/email/password_reset_key_*` |
+| Email Changed | Notify of email change | `account/email/email_changed_*` |
+| Password Changed | Notify of password change | `account/email/password_changed_*` |
+| Unknown Account | Response to reset for unknown email | `account/email/unknown_account_*` |
+| Login Code | Magic link/code login | `account/email/login_code_*` |
+
+## Basic Template Customization
+
+Django-allauth looks for email templates in your project's template directory.
+
+### Directory Structure
+
+Create this structure in your templates directory:
+
+```
+templates/
+└── account/
+    └── email/
+        ├── email_confirmation_subject.txt
+        ├── email_confirmation_message.txt
+        ├── email_confirmation_message.html
+        ├── password_reset_key_subject.txt
+        ├── password_reset_key_message.txt
+        └── password_reset_key_message.html
+```
+
+### Template Files
+
+Each email requires two or three files:
+
+1. `*_subject.txt` - Email subject line (single line, no HTML)
+2. `*_message.txt` - Plain text body
+3. `*_message.html` - HTML body (optional but recommended)
+
+<Note>
+If you provide an HTML template, both plain text and HTML versions will be sent as a multipart email.
+</Note>
+
+## Email Confirmation Template
+
+Customize the signup confirmation email:
+
+```txt templates/account/email/email_confirmation_signup_subject.txt
+Welcome to {{ current_site.name }} - Verify Your Email
+```
+
+```txt templates/account/email/email_confirmation_signup_message.txt
+Hi there,
+
+Thank you for signing up for {{ current_site.name }}!
+
+Please verify your email address by clicking the link below:
+
+{{ activate_url }}
+
+This link will expire in {{ expiration_days }} days.
+
+If you didn't create an account, you can safely ignore this email.
+
+Best regards,
+The {{ current_site.name }} Team
+```
+
+```html templates/account/email/email_confirmation_signup_message.html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .button {
+            display: inline-block;
+            padding: 12px 24px;
+            background-color: #007bff;
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .footer {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Welcome to {{ current_site.name }}!</h1>
+        
+        <p>Thank you for signing up. We're excited to have you on board!</p>
+        
+        <p>Please verify your email address by clicking the button below:</p>
+        
+        <a href="{{ activate_url }}" class="button">Verify Email Address</a>
+        
+        <p>Or copy and paste this link into your browser:</p>
+        <p><a href="{{ activate_url }}">{{ activate_url }}</a></p>
+        
+        <p>This link will expire in {{ expiration_days }} days.</p>
+        
+        <div class="footer">
+            <p>If you didn't create an account with {{ current_site.name }}, you can safely ignore this email.</p>
+            <p>&copy; {{ current_site.name }}. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+</html>
+```
+
+## Password Reset Template
+
+Customize the password reset email:
+
+```txt templates/account/email/password_reset_key_subject.txt
+Password Reset Request for {{ current_site.name }}
+```
+
+```txt templates/account/email/password_reset_key_message.txt
+Hello,
+
+You're receiving this email because you (or someone else) requested a password reset for your account at {{ current_site.name }}.
+
+Click the link below to reset your password:
+
+{{ password_reset_url }}
+
+If you didn't request this, please ignore this email. Your password will remain unchanged.
+
+Best regards,
+The {{ current_site.name }} Team
+```
+
+```html templates/account/email/password_reset_key_message.html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <style>
+        /* Same styles as above */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Password Reset Request</h1>
+        
+        <p>You're receiving this email because you requested a password reset for your {{ current_site.name }} account.</p>
+        
+        <a href="{{ password_reset_url }}" class="button">Reset Password</a>
+        
+        <p>Or copy and paste this link:</p>
+        <p><a href="{{ password_reset_url }}">{{ password_reset_url }}</a></p>
+        
+        <div class="footer">
+            <p>If you didn't request this, please ignore this email. Your password will remain unchanged.</p>
+            <p>This link will expire soon for security reasons.</p>
+        </div>
+    </div>
+</body>
+</html>
+```
+
+## Available Template Context
+
+Each email template receives specific context variables:
+
+### Email Confirmation
+
+```python
+{
+    'request': request,
+    'email': 'user@example.com',
+    'current_site': Site object,
+    'activate_url': 'http://example.com/confirm-email/...',
+    'key': 'confirmation-key',
+    'expiration_days': 3,
+}
+```
+
+### Password Reset
+
+```python
+{
+    'request': request,
+    'email': 'user@example.com',
+    'current_site': Site object,
+    'password_reset_url': 'http://example.com/password/reset/...',
+    'uid': 'user-id',
+    'token': 'reset-token',
+}
+```
+
+## Email Subject Configuration
+
+Customize the subject prefix globally:
+
+```python settings.py
+# Default: "[Site] "
+ACCOUNT_EMAIL_SUBJECT_PREFIX = '[MyApp] '
+
+# Or remove prefix entirely
+ACCOUNT_EMAIL_SUBJECT_PREFIX = ''
+```
+
+## Custom Email Sending Logic
+
+Override the adapter's `send_mail` method for complete control:
+
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.contrib.sites.shortcuts import get_current_site
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def send_mail(self, template_prefix, email, context):
+        """
+        Custom email sending with your own logic.
+        
+        template_prefix: e.g., 'account/email/email_confirmation'
+        email: recipient email address
+        context: dict with template variables
+        """
+        # Add custom context
+        context['support_email'] = 'support@example.com'
+        context['company_name'] = 'My Company Inc.'
+        
+        # Render subject (strip newlines and spaces)
+        subject = render_to_string(
+            f'{template_prefix}_subject.txt',
+            context
+        ).strip()
+        
+        # Render text body
+        text_body = render_to_string(
+            f'{template_prefix}_message.txt',
+            context
+        )
+        
+        # Render HTML body
+        html_body = render_to_string(
+            f'{template_prefix}_message.html',
+            context
+        )
+        
+        # Create email
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body=text_body,
+            from_email='noreply@example.com',
+            to=[email],
+            headers={'Reply-To': 'support@example.com'}
+        )
+        msg.attach_alternative(html_body, "text/html")
+        
+        # Send
+        msg.send()
+```
+
+```python settings.py
+ACCOUNT_ADAPTER = 'myapp.adapters.MyAccountAdapter'
+```
+
+## Using External Email Services
+
+### SendGrid
+
+```python adapters.py
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+from django.conf import settings
+from allauth.account.adapter import DefaultAccountAdapter
+from django.template.loader import render_to_string
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def send_mail(self, template_prefix, email, context):
+        subject = render_to_string(
+            f'{template_prefix}_subject.txt',
+            context
+        ).strip()
+        
+        html_body = render_to_string(
+            f'{template_prefix}_message.html',
+            context
+        )
+        
+        message = Mail(
+            from_email='noreply@example.com',
+            to_emails=email,
+            subject=subject,
+            html_content=html_body
+        )
+        
+        try:
+            sg = SendGridAPIClient(settings.SENDGRID_API_KEY)
+            sg.send(message)
+        except Exception as e:
+            print(f"Error sending email: {e}")
+```
+
+### Mailgun
+
+```python adapters.py
+import requests
+from django.conf import settings
+from allauth.account.adapter import DefaultAccountAdapter
+from django.template.loader import render_to_string
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def send_mail(self, template_prefix, email, context):
+        subject = render_to_string(
+            f'{template_prefix}_subject.txt',
+            context
+        ).strip()
+        
+        text_body = render_to_string(
+            f'{template_prefix}_message.txt',
+            context
+        )
+        
+        html_body = render_to_string(
+            f'{template_prefix}_message.html',
+            context
+        )
+        
+        return requests.post(
+            f"https://api.mailgun.net/v3/{settings.MAILGUN_DOMAIN}/messages",
+            auth=("api", settings.MAILGUN_API_KEY),
+            data={
+                "from": f"My App <noreply@{settings.MAILGUN_DOMAIN}>",
+                "to": [email],
+                "subject": subject,
+                "text": text_body,
+                "html": html_body,
+            }
+        )
+```
+
+## Email Rendering
+
+Customize how email messages are rendered:
+
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+from django.core.mail import EmailMultiAlternatives
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def render_mail(self, template_prefix, email, context):
+        """
+        Render email message.
+        Returns an EmailMultiAlternatives instance.
+        """
+        msg = super().render_mail(template_prefix, email, context)
+        
+        # Add custom headers
+        msg.extra_headers['X-Custom-Header'] = 'value'
+        msg.extra_headers['X-User-Email'] = email
+        
+        # Add BCC
+        msg.bcc = ['admin@example.com']
+        
+        return msg
+```
+
+## Email Notifications
+
+Enable security notification emails:
+
+```python settings.py
+# Send notifications for security events
+ACCOUNT_EMAIL_NOTIFICATIONS = True
+```
+
+This enables emails for:
+- Password changes
+- Email address changes  
+- Security-related account modifications
+
+Customize notification templates:
+
+```txt templates/account/email/password_changed_subject.txt
+Your {{ current_site.name }} Password Was Changed
+```
+
+```html templates/account/email/password_changed_message.html
+<!DOCTYPE html>
+<html>
+<body>
+    <div class="container">
+        <h1>Password Changed</h1>
+        
+        <p>Your password was recently changed.</p>
+        
+        <p><strong>Details:</strong></p>
+        <ul>
+            <li>Date: {{ timestamp }}</li>
+            <li>IP Address: {{ ip_address }}</li>
+            <li>User Agent: {{ user_agent }}</li>
+        </ul>
+        
+        <p>If you didn't make this change, please contact support immediately.</p>
+        
+        <a href="{{ support_url }}" class="button">Contact Support</a>
+    </div>
+</body>
+</html>
+```
+
+## Testing Emails
+
+During development, capture emails instead of sending:
+
+### Console Backend
+
+```python settings.py
+# Print emails to console
+if DEBUG:
+    EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+```
+
+### File Backend
+
+```python settings.py
+# Save emails to files
+if DEBUG:
+    EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
+    EMAIL_FILE_PATH = BASE_DIR / 'sent_emails'
+```
+
+### MailHog / MailCatcher
+
+```python settings.py
+if DEBUG:
+    EMAIL_HOST = 'localhost'
+    EMAIL_PORT = 1025
+    EMAIL_USE_TLS = False
+```
+
+## Unknown Account Emails
+
+Control whether emails are sent for non-existent accounts:
+
+```python settings.py
+# Send email even if account doesn't exist (prevents enumeration)
+ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS = True
+```
+
+Customize the unknown account template:
+
+```txt templates/account/email/unknown_account_message.txt
+Hello,
+
+We received a password reset request for this email address.
+
+However, no account exists with this email at {{ current_site.name }}.
+
+If you'd like to create an account, please visit:
+{{ signup_url }}
+
+Best regards,
+The Team
+```
+
+## Adding Attachments
+
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def render_mail(self, template_prefix, email, context):
+        msg = super().render_mail(template_prefix, email, context)
+        
+        # Add PDF attachment
+        if template_prefix == 'account/email/email_confirmation_signup':
+            with open('welcome.pdf', 'rb') as f:
+                msg.attach('Welcome.pdf', f.read(), 'application/pdf')
+        
+        return msg
+```
+
+## Email Styling Best Practices
+
+1. **Inline CSS**: Many email clients strip `<style>` tags, so use inline styles:
+
+```html
+<p style="color: #333; font-size: 16px; line-height: 1.6;">
+    Your content here
+</p>
+```
+
+2. **Tables for Layout**: Use tables instead of divs for better compatibility:
+
+```html
+<table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+        <td style="padding: 20px;">
+            Content
+        </td>
+    </tr>
+</table>
+```
+
+3. **Test Across Clients**: Use services like Litmus or Email on Acid to test rendering
+
+4. **Keep it Simple**: Complex layouts may break in some email clients
+
+## Configuration Reference
+
+### ACCOUNT_EMAIL_SUBJECT_PREFIX
+
+**Default:** `"[Site] "`
+
+Prefix added to all email subjects.
+
+### ACCOUNT_EMAIL_NOTIFICATIONS
+
+**Default:** `False`
+
+Enable security notification emails for password changes, etc.
+
+### ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS
+
+**Default:** `True`
+
+Send password reset emails even when account doesn't exist (prevents enumeration).
+
+## Complete Example
+
+```python settings.py
+# Email configuration
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = 'your-email@gmail.com'
+EMAIL_HOST_PASSWORD = 'your-password'
+DEFAULT_FROM_EMAIL = 'noreply@example.com'
+
+# Allauth email settings
+ACCOUNT_EMAIL_SUBJECT_PREFIX = '[MyApp] '
+ACCOUNT_EMAIL_NOTIFICATIONS = True
+ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS = True
+ACCOUNT_ADAPTER = 'myapp.adapters.MyAccountAdapter'
+```
+
+With these customizations, you have complete control over all emails sent by django-allauth.

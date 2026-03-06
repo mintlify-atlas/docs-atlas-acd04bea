@@ -1,0 +1,567 @@
+---
+title: "Views"
+description: "Django views for social authentication"
+---
+
+## SignupView
+
+Handles social account signup when additional information is required from the user.
+
+### Class Definition
+
+```python
+class SignupView(
+    RedirectAuthenticatedUserMixin,
+    CloseableSignupMixin,
+    AjaxCapableProcessFormViewMixin,
+    FormView,
+)
+```
+
+### Attributes
+
+<ParamField path="form_class" type="type">
+  The form class to use. Defaults to `SignupForm`.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `socialaccount/signup.html` or `socialaccount/signup.ajax` based on `ACCOUNT_TEMPLATE_EXTENSION`.
+</ParamField>
+
+<ParamField path="sociallogin" type="SocialLogin">
+  The pending social login instance (set during dispatch).
+</ParamField>
+
+### Methods
+
+#### dispatch()
+
+```python
+@method_decorator(login_not_required)
+def dispatch(request, *args, **kwargs) -> HttpResponse
+```
+
+Handles the initial request and retrieves the pending social login.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ResponseField name="return" type="HttpResponse">
+  The HTTP response, or redirect to login if no pending signup.
+</ResponseField>
+
+**Behavior:**
+- Retrieves pending social login from session
+- Redirects to login page if no pending signup found
+- Proceeds with normal dispatch if signup is pending
+
+#### get_form_class()
+
+```python
+def get_form_class() -> type
+```
+
+Returns the form class to use, checking for custom form in settings.
+
+<ResponseField name="return" type="type">
+  Form class from `SOCIALACCOUNT_FORMS['signup']` or default `SignupForm`.
+</ResponseField>
+
+#### get_form_kwargs()
+
+```python
+def get_form_kwargs() -> dict
+```
+
+Returns keyword arguments for instantiating the form.
+
+<ResponseField name="return" type="dict">
+  Dictionary including the `sociallogin` parameter.
+</ResponseField>
+
+#### is_open()
+
+```python
+def is_open() -> bool
+```
+
+Checks if signup is currently open.
+
+<ResponseField name="return" type="bool">
+  True if signup is open, False otherwise.
+</ResponseField>
+
+**Delegates to:** `adapter.is_open_for_signup(request, sociallogin)`
+
+#### form_valid()
+
+```python
+def form_valid(form) -> HttpResponse
+```
+
+Called when the form is valid.
+
+<ParamField path="form" type="SignupForm">
+  The validated form instance.
+</ParamField>
+
+<ResponseField name="return" type="HttpResponse">
+  Redirect response after successful signup.
+</ResponseField>
+
+**Process:**
+1. Creates user account with form data
+2. Connects social account to user
+3. Logs user in
+4. Redirects to next URL or default location
+
+#### get_context_data()
+
+```python
+def get_context_data(**kwargs) -> dict
+```
+
+Returns context data for rendering the template.
+
+<ResponseField name="return" type="dict">
+  Context dictionary including `site` and `account`.
+</ResponseField>
+
+#### get_authenticated_redirect_url()
+
+```python
+def get_authenticated_redirect_url() -> str
+```
+
+Returns URL to redirect authenticated users to.
+
+<ResponseField name="return" type="str">
+  URL to the connections page.
+</ResponseField>
+
+### URL Configuration
+
+```python
+from allauth.socialaccount.views import signup
+
+urlpatterns = [
+    path('social/signup/', signup, name='socialaccount_signup'),
+]
+```
+
+### Template Context
+
+The template receives:
+
+- `form` - The signup form
+- `site` - The current site
+- `account` - The social account being connected
+- `provider` - The provider instance
+
+**Example template:**
+
+```html
+{% extends "account/base.html" %}
+
+{% block content %}
+  <h1>Sign Up with {{ account.get_provider.name }}</h1>
+  
+  <p>You are about to connect your {{ account.get_provider.name }} account.</p>
+  
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Sign Up</button>
+  </form>
+{% endblock %}
+```
+
+### Function-based View
+
+```python
+signup = SignupView.as_view()
+```
+
+The module exports a function-based view instance for use in URL configuration.
+
+---
+
+## LoginCancelledView
+
+Displays a page when the user cancels social authentication.
+
+### Class Definition
+
+```python
+@method_decorator(login_not_required, name="dispatch")
+class LoginCancelledView(TemplateView)
+```
+
+### Attributes
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `socialaccount/login_cancelled.html`.
+</ParamField>
+
+### Usage
+
+This view is shown when:
+- User clicks "Cancel" on the provider's authorization page
+- Provider redirects back with error indicating cancellation
+
+### URL Configuration
+
+```python
+from allauth.socialaccount.views import login_cancelled
+
+urlpatterns = [
+    path('social/login/cancelled/', login_cancelled, name='socialaccount_login_cancelled'),
+]
+```
+
+### Template Example
+
+```html
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Login Cancelled</h1>
+  <p>You cancelled the login process.</p>
+  <p><a href="{% url 'account_login' %}">Try again</a></p>
+{% endblock %}
+```
+
+### Function-based View
+
+```python
+login_cancelled = LoginCancelledView.as_view()
+```
+
+---
+
+## LoginErrorView
+
+Displays an error page when social authentication fails.
+
+### Class Definition
+
+```python
+class LoginErrorView(TemplateView)
+```
+
+### Attributes
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `socialaccount/authentication_error.html`.
+</ParamField>
+
+### Methods
+
+#### get()
+
+```python
+def get(request, *args, **kwargs) -> HttpResponse
+```
+
+Handles GET requests and renders the error page with 401 status.
+
+<ParamField path="request" type="HttpRequest">
+  The Django request object.
+</ParamField>
+
+<ResponseField name="return" type="HttpResponse">
+  HTTP response with 401 Unauthorized status.
+</ResponseField>
+
+### Usage
+
+This view is shown when:
+- Provider returns an error during authentication
+- OAuth flow fails due to invalid state
+- Provider denies access
+- Token exchange fails
+
+### URL Configuration
+
+```python
+from allauth.socialaccount.views import login_error
+
+urlpatterns = [
+    path('social/login/error/', login_error, name='socialaccount_login_error'),
+]
+```
+
+### Template Example
+
+```html
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Authentication Error</h1>
+  <p>An error occurred during the authentication process.</p>
+  <p>Please try again or contact support if the problem persists.</p>
+  <p><a href="{% url 'account_login' %}">Back to Login</a></p>
+{% endblock %}
+```
+
+### Function-based View
+
+```python
+login_error = LoginErrorView.as_view()
+```
+
+---
+
+## ConnectionsView
+
+Manages connected social accounts for authenticated users.
+
+### Class Definition
+
+```python
+@method_decorator(login_required, name="dispatch")
+class ConnectionsView(AjaxCapableProcessFormViewMixin, FormView)
+```
+
+### Attributes
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `socialaccount/connections.html`.
+</ParamField>
+
+<ParamField path="form_class" type="type">
+  The form class to use. Defaults to `DisconnectForm`.
+</ParamField>
+
+<ParamField path="success_url" type="str">
+  URL to redirect to after successful disconnection. Defaults to `socialaccount_connections`.
+</ParamField>
+
+### Methods
+
+#### get_form_class()
+
+```python
+def get_form_class() -> type
+```
+
+Returns the form class to use, checking for custom form in settings.
+
+<ResponseField name="return" type="type">
+  Form class from `SOCIALACCOUNT_FORMS['disconnect']` or default `DisconnectForm`.
+</ResponseField>
+
+#### get_form_kwargs()
+
+```python
+def get_form_kwargs() -> dict
+```
+
+Returns keyword arguments for instantiating the form.
+
+<ResponseField name="return" type="dict">
+  Dictionary including the `request` parameter.
+</ResponseField>
+
+#### form_valid()
+
+```python
+def form_valid(form) -> HttpResponse
+```
+
+Called when the form is valid (account disconnected successfully).
+
+<ParamField path="form" type="DisconnectForm">
+  The validated form instance.
+</ParamField>
+
+<ResponseField name="return" type="HttpResponse">
+  Redirect to success URL.
+</ResponseField>
+
+#### get_ajax_data()
+
+```python
+def get_ajax_data() -> dict
+```
+
+Returns data for AJAX responses.
+
+<ResponseField name="return" type="dict">
+  Dictionary with `socialaccounts` list containing account data.
+</ResponseField>
+
+**Response format:**
+
+```json
+{
+  "socialaccounts": [
+    {
+      "id": 1,
+      "provider": "google",
+      "name": "john@example.com"
+    },
+    {
+      "id": 2,
+      "provider": "github",
+      "name": "johndoe"
+    }
+  ]
+}
+```
+
+### URL Configuration
+
+```python
+from allauth.socialaccount.views import connections
+
+urlpatterns = [
+    path('social/connections/', connections, name='socialaccount_connections'),
+]
+```
+
+### Template Context
+
+The template receives:
+
+- `form` - The disconnect form
+- `socialaccounts` - QuerySet of user's social accounts (via form.accounts)
+
+**Example template:**
+
+```html
+{% extends "account/base.html" %}
+
+{% block content %}
+  <h1>Connected Accounts</h1>
+  
+  {% if form.accounts %}
+    <form method="post">
+      {% csrf_token %}
+      
+      <ul class="social-accounts">
+        {% for account in form.accounts %}
+          <li>
+            <label>
+              <input type="radio" name="account" value="{{ account.id }}">
+              <strong>{{ account.get_provider.name }}</strong>
+              {{ account }}
+              {% if account.get_avatar_url %}
+                <img src="{{ account.get_avatar_url }}" alt="Avatar">
+              {% endif %}
+            </label>
+          </li>
+        {% endfor %}
+      </ul>
+      
+      <button type="submit">Disconnect Selected Account</button>
+    </form>
+  {% else %}
+    <p>No social accounts connected.</p>
+  {% endif %}
+  
+  <h2>Connect New Account</h2>
+  <ul>
+    {% for provider in providers %}
+      <li>
+        <a href="{% provider_login_url provider.id %}">
+          Connect {{ provider.name }}
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+{% endblock %}
+```
+
+### AJAX Usage
+
+```javascript
+// Get connected accounts
+fetch('/accounts/social/connections/', {
+  headers: {
+    'X-Requested-With': 'XMLHttpRequest'
+  }
+})
+  .then(response => response.json())
+  .then(data => {
+    console.log(data.socialaccounts);
+  });
+
+// Disconnect account
+fetch('/accounts/social/connections/', {
+  method: 'POST',
+  headers: {
+    'X-Requested-With': 'XMLHttpRequest',
+    'X-CSRFToken': getCookie('csrftoken'),
+    'Content-Type': 'application/x-www-form-urlencoded',
+  },
+  body: 'account=1'
+})
+  .then(response => response.json())
+  .then(data => {
+    console.log('Account disconnected');
+  });
+```
+
+### Function-based View
+
+```python
+connections = ConnectionsView.as_view()
+```
+
+## View Customization
+
+All views can be extended or replaced:
+
+### Extending a View
+
+```python
+from allauth.socialaccount.views import SignupView
+from django.shortcuts import redirect
+
+class MySignupView(SignupView):
+    
+    template_name = 'myapp/social_signup.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['custom_data'] = 'value'
+        return context
+    
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        # Additional processing
+        send_welcome_email(form.user)
+        return response
+
+# urls.py
+urlpatterns = [
+    path('social/signup/', MySignupView.as_view(), name='socialaccount_signup'),
+]
+```
+
+### Adding Custom Views
+
+```python
+from django.views.generic import TemplateView
+from django.contrib.auth.decorators import login_required
+from django.utils.decorators import method_decorator
+from allauth.socialaccount.models import SocialAccount
+
+@method_decorator(login_required, name='dispatch')
+class SocialAccountsAPIView(TemplateView):
+    
+    def get(self, request, *args, **kwargs):
+        accounts = SocialAccount.objects.filter(user=request.user)
+        data = [
+            {
+                'provider': account.provider,
+                'uid': account.uid,
+                'profile_url': account.get_profile_url(),
+                'avatar_url': account.get_avatar_url(),
+            }
+            for account in accounts
+        ]
+        return JsonResponse({'accounts': data})
+```

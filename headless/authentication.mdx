@@ -1,0 +1,675 @@
+---
+title: Authentication Flows
+description: Learn how to implement authentication flows with django-allauth headless API
+---
+
+This guide covers the authentication flows and REST API endpoints provided by django-allauth headless.
+
+## API Base URLs
+
+The headless API provides two base URLs for different client types:
+
+- **Browser clients:** `/_allauth/browser/v1/`
+- **App clients:** `/_allauth/app/v1/`
+
+## Client Types
+
+### Browser Clients
+
+For single-page applications on the same domain:
+
+- Uses Django sessions and CSRF tokens
+- Authentication state stored in session cookies
+- Requires `X-CSRFToken` header in POST requests
+- No additional token management needed
+
+### App Clients
+
+For mobile apps or cross-origin SPAs:
+
+- Uses session tokens or JWT tokens
+- Authentication state stored in `X-Session-Token` header
+- No CSRF protection (stateless)
+- Requires token storage in the client
+
+## Authentication API Endpoints
+
+### Get Configuration
+
+Retrieve API configuration and available features:
+
+```http
+GET /_allauth/browser/v1/config
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "account": {
+      "authentication_method": "email",
+      "is_open_for_signup": true,
+      "login_methods": ["email"],
+      "email_verification_by_code_enabled": true,
+      "login_by_code_enabled": true,
+      "password_reset_by_code_enabled": false
+    },
+    "socialaccount": {
+      "providers": [
+        {
+          "id": "google",
+          "name": "Google",
+          "flows": ["login"]
+        }
+      ]
+    },
+    "mfa": {
+      "supported_types": ["totp", "recovery_codes", "webauthn"]
+    }
+  }
+}
+```
+
+### Get Session Status
+
+Check current authentication status:
+
+```http
+GET /_allauth/browser/v1/auth/session
+```
+
+**Response (authenticated):**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {
+      "id": 1,
+      "username": "john",
+      "email": "john@example.com",
+      "display": "john@example.com"
+    },
+    "methods": [
+      {
+        "method": "password",
+        "at": 1678901234.56,
+        "email": "john@example.com"
+      }
+    ]
+  },
+  "meta": {
+    "is_authenticated": true
+  }
+}
+```
+
+**Response (not authenticated):**
+
+```json
+{
+  "status": 401,
+  "data": {
+    "flows": [
+      {"id": "login"},
+      {"id": "login_by_code"},
+      {"id": "signup"},
+      {"id": "provider_signup"},
+      {"id": "mfa_login_webauthn"}
+    ]
+  },
+  "meta": {
+    "is_authenticated": false
+  }
+}
+```
+
+## User Registration (Signup)
+
+### Create Account
+
+```http
+POST /_allauth/browser/v1/auth/signup
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": 401,
+  "data": {
+    "flows": [
+      {
+        "id": "verify_email",
+        "is_pending": true
+      }
+    ]
+  },
+  "meta": {
+    "is_authenticated": false,
+    "session_token": "abc123..."  // For app clients
+  }
+}
+```
+
+With `ACCOUNT_EMAIL_VERIFICATION = "mandatory"`, the user must verify their email before logging in.
+
+### Verify Email
+
+When the user clicks the link in their email, extract the key from the URL and verify:
+
+```http
+GET /_allauth/browser/v1/auth/email/verify
+X-Email-Verification-Key: the-verification-key
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "email": "user@example.com",
+    "user": null
+  }
+}
+```
+
+Then confirm the verification:
+
+```http
+POST /_allauth/browser/v1/auth/email/verify
+Content-Type: application/json
+
+{
+  "key": "the-verification-key"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {
+      "id": 1,
+      "email": "user@example.com",
+      "username": "",
+      "display": "user@example.com"
+    },
+    "methods": [
+      {
+        "method": "password",
+        "at": 1678901234.56,
+        "email": "user@example.com"
+      }
+    ]
+  },
+  "meta": {
+    "is_authenticated": true,
+    "access_token": "eyJ0eXAi...",  // If using JWT
+    "refresh_token": "abc123..."   // If using JWT
+  }
+}
+```
+
+## Login Flows
+
+### Standard Login (Email/Password)
+
+```http
+POST /_allauth/browser/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "SecurePass123!"
+}
+```
+
+**Success Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {
+      "id": 1,
+      "email": "user@example.com",
+      "username": "",
+      "display": "user@example.com"
+    },
+    "methods": [
+      {
+        "method": "password",
+        "at": 1678901234.56,
+        "email": "user@example.com"
+      }
+    ]
+  },
+  "meta": {
+    "is_authenticated": true,
+    "access_token": "eyJ0eXAi...",  // JWT only
+    "refresh_token": "abc123..."   // JWT only
+  }
+}
+```
+
+**Error Response:**
+
+```json
+{
+  "status": 400,
+  "errors": [
+    {
+      "code": "invalid_credentials",
+      "message": "The email address and/or password you specified are not correct."
+    }
+  ]
+}
+```
+
+### Login by Code (Passwordless)
+
+Request a login code:
+
+```http
+POST /_allauth/browser/v1/auth/code/request
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": 401,
+  "data": {
+    "flows": [
+      {
+        "id": "login_by_code",
+        "is_pending": true
+      }
+    ]
+  },
+  "meta": {
+    "is_authenticated": false,
+    "session_token": "temp-session-token"
+  }
+}
+```
+
+Confirm the code:
+
+```http
+POST /_allauth/browser/v1/auth/code/confirm
+X-Session-Token: temp-session-token
+Content-Type: application/json
+
+{
+  "code": "123456"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {
+      "id": 1,
+      "email": "user@example.com"
+    }
+  },
+  "meta": {
+    "is_authenticated": true
+  }
+}
+```
+
+## Password Reset
+
+### Request Password Reset
+
+```http
+POST /_allauth/browser/v1/auth/password/request
+Content-Type: application/json
+
+{
+  "email": "user@example.com"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {},
+  "meta": {}
+}
+```
+
+### Verify Reset Key
+
+```http
+GET /_allauth/browser/v1/auth/password/reset
+X-Password-Reset-Key: the-reset-key
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {
+      "email": "user@example.com"
+    }
+  }
+}
+```
+
+### Reset Password
+
+```http
+POST /_allauth/browser/v1/auth/password/reset
+Content-Type: application/json
+
+{
+  "key": "the-reset-key",
+  "password": "NewSecurePass123!"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {
+      "id": 1,
+      "email": "user@example.com"
+    }
+  },
+  "meta": {
+    "is_authenticated": true
+  }
+}
+```
+
+## Logout
+
+```http
+DELETE /_allauth/browser/v1/auth/session
+```
+
+**Response:**
+
+```json
+{
+  "status": 401,
+  "data": {
+    "flows": [
+      {"id": "login"},
+      {"id": "signup"}
+    ]
+  },
+  "meta": {
+    "is_authenticated": false
+  }
+}
+```
+
+## JWT Token Management
+
+When using JWT token strategy, tokens are returned in the `meta` field:
+
+### Initial Authentication
+
+After successful login or signup:
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {...}
+  },
+  "meta": {
+    "is_authenticated": true,
+    "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
+    "refresh_token": "def50200a1b2c3d4e5f6..."
+  }
+}
+```
+
+### Using Access Tokens
+
+Include the access token in the Authorization header:
+
+```http
+GET /_allauth/app/v1/account/email
+Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...
+```
+
+### Refreshing Tokens
+
+When the access token expires, use the refresh token:
+
+```http
+POST /_allauth/app/v1/auth/session
+Content-Type: application/json
+
+{
+  "refresh_token": "def50200a1b2c3d4e5f6..."
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {...}
+  },
+  "meta": {
+    "access_token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...",
+    "refresh_token": "new-refresh-token-here"  // If rotation enabled
+  }
+}
+```
+
+## Account Management
+
+### Get Email Addresses
+
+```http
+GET /_allauth/browser/v1/account/email
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": [
+    {
+      "email": "user@example.com",
+      "primary": true,
+      "verified": true
+    },
+    {
+      "email": "alternate@example.com",
+      "primary": false,
+      "verified": false
+    }
+  ]
+}
+```
+
+### Add Email Address
+
+```http
+POST /_allauth/browser/v1/account/email
+Content-Type: application/json
+
+{
+  "email": "newemail@example.com"
+}
+```
+
+### Change Password
+
+```http
+POST /_allauth/browser/v1/account/password/change
+Content-Type: application/json
+
+{
+  "current_password": "OldPass123!",
+  "new_password": "NewSecurePass456!"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {...}
+  },
+  "meta": {
+    "is_authenticated": true
+  }
+}
+```
+
+## Reauthentication
+
+For sensitive operations, request reauthentication:
+
+```http
+POST /_allauth/browser/v1/auth/reauthenticate
+Content-Type: application/json
+
+{
+  "password": "CurrentPass123!"
+}
+```
+
+**Response:**
+
+```json
+{
+  "status": 200,
+  "data": {
+    "user": {...}
+  },
+  "meta": {
+    "is_authenticated": true
+  }
+}
+```
+
+## Securing Your API Endpoints
+
+### Django REST Framework
+
+Use the provided authentication classes:
+
+```python
+from rest_framework import permissions
+from rest_framework.views import APIView
+from allauth.headless.contrib.rest_framework.authentication import (
+    JWTTokenAuthentication,
+    XSessionTokenAuthentication,
+)
+
+class MyAPIView(APIView):
+    # For JWT tokens
+    authentication_classes = [JWTTokenAuthentication]
+    # Or for session tokens
+    # authentication_classes = [XSessionTokenAuthentication]
+    
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request):
+        return Response({
+            "message": f"Hello, {request.user.email}!"
+        })
+```
+
+### Django Ninja
+
+Use the provided security classes:
+
+```python
+from ninja import NinjaAPI
+from allauth.headless.contrib.ninja.security import (
+    jwt_token_auth,
+    x_session_token_auth,
+)
+
+api = NinjaAPI()
+
+@api.get("/protected", auth=[jwt_token_auth])
+def protected_endpoint(request):
+    return {
+        "message": f"Hello, {request.user.email}!"
+    }
+
+# Or with session tokens
+@api.get("/protected", auth=[x_session_token_auth])
+def protected_endpoint(request):
+    return {
+        "message": f"Hello, {request.user.email}!"
+    }
+```
+
+## Error Handling
+
+All error responses follow this format:
+
+```json
+{
+  "status": 400,
+  "errors": [
+    {
+      "code": "invalid_credentials",
+      "message": "The email address and/or password you specified are not correct.",
+      "param": "password"  // Optional, field-specific error
+    }
+  ]
+}
+```
+
+Common HTTP status codes:
+
+- `200` - Success
+- `400` - Bad request (validation error)
+- `401` - Not authenticated
+- `403` - Forbidden (e.g., signup disabled)
+- `409` - Conflict (e.g., invalid flow state)
+- `429` - Rate limited
+- `500` - Internal server error
+
+## Next Steps
+
+- [Configure CORS](/headless/cors) for cross-origin requests
+- [Customize JWT settings](/headless/configuration#jwt-token-configuration)
+- Explore the OpenAPI specification at `/_allauth/openapi.html`

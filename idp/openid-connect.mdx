@@ -1,0 +1,610 @@
+---
+title: OpenID Connect Provider
+description: Complete guide to implementing an OpenID Connect identity provider with django-allauth
+---
+
+## Overview
+
+The `allauth.idp.oidc` package provides a production-ready OpenID Connect (OIDC) provider for your Django application. It allows other applications to authenticate users against your Django app using the industry-standard OIDC protocol.
+
+## Supported Grant Types
+
+The OIDC provider supports the following OAuth 2.0 grant types:
+
+- **Authorization Code Grant**: The recommended flow for web applications with a backend
+- **Client Credentials Grant**: For server-to-server authentication without user interaction
+- **Implicit Grant**: Legacy flow for single-page applications (not recommended for new applications)
+- **Device Authorization Grant**: For devices with limited input capabilities (TVs, IoT devices, etc.)
+- **Refresh Token Grant**: For obtaining new access tokens without re-authenticating the user
+
+<Note>
+  Password grant is intentionally not supported as it's a legacy flow that lacks support for modern security features like MFA.
+</Note>
+
+## Installation
+
+### 1. Install Dependencies
+
+Install django-allauth with the OpenID Connect IDP extra:
+
+```bash
+pip install "django-allauth[idp-oidc]"
+```
+
+### 2. Configure Django Settings
+
+First, ensure you have `allauth.account` configured in your project. Then add the OIDC provider app to your `INSTALLED_APPS`:
+
+```python settings.py
+INSTALLED_APPS = [
+    # ... other apps
+    "django.contrib.sites",
+    "allauth",
+    "allauth.account",
+    "allauth.idp.oidc",  # Add this
+    # ... other apps
+]
+```
+
+### 3. Generate Private Key
+
+The OIDC provider requires a private key for signing tokens. Generate one using OpenSSL:
+
+```bash
+openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
+```
+
+Then add the private key to your settings:
+
+```python settings.py
+IDP_OIDC_PRIVATE_KEY = """
+-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCiStSwvoSk61uf
+cQvkGDmR6gsM2QjVgKxCTPtg3tMhMO7kXq3PPMEiWlF49JicjPWs5vkYcLAsWNVE
+...
+rfnteLIERvzd4rLi9WjTahfKA2Mq3YNIe3Hw8IDrrczJgd/XkEaENGYXmmNCX22B
+gtUcukumVPtrDhGK9i/PG3Q=
+-----END PRIVATE KEY-----
+"""
+```
+
+<Warning>
+  Never commit your private key to version control. Use environment variables or a secure secrets management system in production.
+</Warning>
+
+### 4. Configure URLs
+
+Add the IDP URLs to your project's `urls.py`:
+
+```python urls.py
+from django.urls import path, include
+
+urlpatterns = [
+    # ... other patterns
+    path("", include("allauth.idp.urls")),
+    # ... other patterns
+]
+```
+
+This will enable the following endpoints:
+
+- `/.well-known/openid-configuration` - Provider configuration metadata
+- `/.well-known/jwks.json` - JSON Web Key Set for token verification
+- `/identity/o/authorize` - Authorization endpoint
+- `/identity/o/api/token` - Token endpoint
+- `/identity/o/api/userinfo` - User information endpoint
+- `/identity/o/api/revoke` - Token revocation endpoint
+- `/identity/o/device` - Device authorization endpoint
+- `/identity/o/logout` - RP-initiated logout endpoint
+
+### 5. Run Migrations
+
+Apply the database migrations to create the necessary tables:
+
+```bash
+python manage.py migrate
+```
+
+## Configuration
+
+Customize the OIDC provider behavior with these settings:
+
+### Token Settings
+
+```python settings.py
+# Access token expiration (in seconds)
+IDP_OIDC_ACCESS_TOKEN_EXPIRES_IN = 3600  # 1 hour
+
+# Access token format: "opaque" (random string) or "jwt"
+IDP_OIDC_ACCESS_TOKEN_FORMAT = "opaque"
+
+# ID token expiration (in seconds)
+IDP_OIDC_ID_TOKEN_EXPIRES_IN = 300  # 5 minutes
+
+# Authorization code expiration (in seconds)
+IDP_OIDC_AUTHORIZATION_CODE_EXPIRES_IN = 60  # 1 minute
+
+# Whether to rotate refresh tokens when refreshing access tokens
+IDP_OIDC_ROTATE_REFRESH_TOKEN = True
+```
+
+### Device Flow Settings
+
+```python settings.py
+# Device code expiration (in seconds)
+IDP_OIDC_DEVICE_CODE_EXPIRES_IN = 300  # 5 minutes
+
+# Minimum interval between polling attempts (in seconds)
+IDP_OIDC_DEVICE_CODE_INTERVAL = 5
+```
+
+### Adapter Settings
+
+```python settings.py
+# Custom adapter class for advanced customization
+IDP_OIDC_ADAPTER = "allauth.idp.oidc.adapter.DefaultOIDCAdapter"
+```
+
+### Rate Limiting
+
+```python settings.py
+# Rate limits for specific endpoints
+IDP_OIDC_RATE_LIMITS = {
+    "device_user_code": "5/m/ip",  # 5 requests per minute per IP
+}
+
+# Disable rate limiting (not recommended)
+# IDP_OIDC_RATE_LIMITS = False
+```
+
+### Logout Settings
+
+```python settings.py
+# Always ask user whether to logout from the OP during RP-initiated logout
+IDP_OIDC_RP_INITIATED_LOGOUT_ASKS_FOR_OP_LOGOUT = True
+```
+
+### Custom UserInfo Endpoint
+
+```python settings.py
+# Use a custom userinfo endpoint URL
+IDP_OIDC_USERINFO_ENDPOINT = None  # Uses built-in endpoint
+
+# Or point to a custom endpoint
+# IDP_OIDC_USERINFO_ENDPOINT = "https://api.example.com/userinfo"
+```
+
+## Managing Clients
+
+OAuth clients represent third-party applications that want to authenticate users through your identity provider.
+
+### Creating Clients via Django Admin
+
+1. Go to the Django admin interface
+2. Navigate to **IDP OIDC** → **Clients**
+3. Click **Add Client**
+4. Configure the client settings
+
+### Client Configuration
+
+Here's what each field means:
+
+**Name**
+: The display name shown to users during authorization
+
+**ID**
+: Automatically generated client identifier
+
+**Secret**
+: Automatically generated and shown only once at creation (for confidential clients)
+
+**Type**
+: 
+- `Confidential`: Can securely store secrets (backend applications)
+- `Public`: Cannot store secrets securely (SPAs, mobile apps)
+
+**Scopes**
+: Allowed scopes for this client (one per line)
+```
+openid
+profile
+email
+```
+
+**Default Scopes**
+: Scopes granted when the client doesn't specify any
+
+**Grant Types**
+: Allowed OAuth 2.0 grant types (one per line)
+```
+authorization_code
+client_credentials
+refresh_token
+```
+
+**Response Types**
+: Allowed response types (one per line)
+```
+code
+id_token token
+```
+
+**Redirect URIs**
+: Allowed callback URLs after authentication (one per line)
+```
+https://app.example.com/callback
+http://localhost:3000/callback
+```
+
+**CORS Origins**
+: Allowed origins for cross-origin requests (one per line)
+```
+https://app.example.com
+http://localhost:3000
+```
+
+**Allow URI Wildcards**
+: Enable wildcard matching in redirect URIs and CORS origins
+```
+https://*.example.pages.dev
+https://*.preview.example.com
+```
+
+**Skip Consent**
+: Automatically grant all requested scopes without user confirmation (for trusted first-party apps)
+
+### Example Client Configuration
+
+```python
+# For a confidential web application
+Name: My Web App
+Type: Confidential
+Scopes:
+  openid
+  profile
+  email
+Grant Types:
+  authorization_code
+  refresh_token
+Response Types:
+  code
+Redirect URIs:
+  https://myapp.example.com/auth/callback
+CORS Origins:
+  https://myapp.example.com
+```
+
+## OAuth 2.0 Flows
+
+### Authorization Code Flow
+
+The most common and secure flow for web applications:
+
+1. **Initiate Authorization**: Redirect user to authorization endpoint
+
+```
+GET /identity/o/authorize?
+  response_type=code&
+  client_id=abc123&
+  redirect_uri=https://app.example.com/callback&
+  scope=openid profile email&
+  state=random_state_value
+```
+
+2. **User Authentication**: User logs in and grants consent
+
+3. **Authorization Code**: User is redirected back with a code
+
+```
+https://app.example.com/callback?
+  code=AUTH_CODE&
+  state=random_state_value
+```
+
+4. **Token Exchange**: Exchange code for tokens
+
+```bash
+curl -X POST https://your-domain.com/identity/o/api/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=authorization_code" \
+  -d "code=AUTH_CODE" \
+  -d "client_id=abc123" \
+  -d "client_secret=secret" \
+  -d "redirect_uri=https://app.example.com/callback"
+```
+
+5. **Response**: Receive tokens
+
+```json
+{
+  "access_token": "eyJhbGci...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "def50200...",
+  "id_token": "eyJhbGci..."
+}
+```
+
+### Client Credentials Flow
+
+For server-to-server authentication without user interaction:
+
+```bash
+curl -X POST https://your-domain.com/identity/o/api/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=client_credentials" \
+  -d "client_id=abc123" \
+  -d "client_secret=secret" \
+  -d "scope=api:read"
+```
+
+### Refresh Token Flow
+
+Obtain a new access token using a refresh token:
+
+```bash
+curl -X POST https://your-domain.com/identity/o/api/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=def50200..." \
+  -d "client_id=abc123" \
+  -d "client_secret=secret"
+```
+
+### Device Authorization Flow
+
+For devices with limited input capabilities:
+
+1. **Request Device Code**:
+
+```bash
+curl -X POST https://your-domain.com/identity/o/api/device/code \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "client_id=abc123" \
+  -d "scope=openid profile"
+```
+
+Response:
+```json
+{
+  "device_code": "GmRhmhcxhwAzkoEqiMEg_DnyEysNkuNhszIySk9eS",
+  "user_code": "WDJB-MJHT",
+  "verification_uri": "https://your-domain.com/identity/o/device",
+  "expires_in": 300,
+  "interval": 5
+}
+```
+
+2. **User Enters Code**: Display the `user_code` and `verification_uri` to the user
+
+3. **Poll for Token**:
+
+```bash
+curl -X POST https://your-domain.com/identity/o/api/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=urn:ietf:params:oauth:grant-type:device_code" \
+  -d "device_code=GmRhmhcxhwAzkoEqiMEg_DnyEysNkuNhszIySk9eS" \
+  -d "client_id=abc123"
+```
+
+## Using Tokens
+
+### Accessing User Information
+
+Use the access token to fetch user information:
+
+```bash
+curl -X GET https://your-domain.com/identity/o/api/userinfo \
+  -H "Authorization: Bearer eyJhbGci..."
+```
+
+Response:
+```json
+{
+  "sub": "123",
+  "email": "user@example.com",
+  "email_verified": true,
+  "name": "John Doe",
+  "given_name": "John",
+  "family_name": "Doe",
+  "preferred_username": "johndoe"
+}
+```
+
+### Revoking Tokens
+
+Revoke an access or refresh token:
+
+```bash
+curl -X POST https://your-domain.com/identity/o/api/revoke \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "token=eyJhbGci..." \
+  -d "client_id=abc123" \
+  -d "client_secret=secret"
+```
+
+## Customizing the Adapter
+
+Create a custom adapter to modify default behavior:
+
+```python myapp/adapters.py
+from allauth.idp.oidc.adapter import DefaultOIDCAdapter
+
+class CustomOIDCAdapter(DefaultOIDCAdapter):
+    def get_claims(self, purpose, user, client, scopes, email=None, **kwargs):
+        """Add custom claims to ID token and userinfo response."""
+        claims = super().get_claims(purpose, user, client, scopes, email, **kwargs)
+        
+        # Add custom claims
+        if "profile" in scopes:
+            claims["organization"] = user.profile.organization
+            claims["role"] = user.profile.role
+        
+        return claims
+    
+    def populate_access_token(self, access_token, *, client, scopes, user, **kwargs):
+        """Add custom data to JWT access tokens."""
+        super().populate_access_token(access_token, client=client, scopes=scopes, user=user, **kwargs)
+        
+        # Add custom claims to JWT access token
+        access_token["tenant_id"] = user.profile.tenant_id
+    
+    def get_user_sub(self, client, user):
+        """Customize the subject identifier."""
+        # Use email as subject instead of user ID
+        return user.email
+```
+
+Configure Django to use your custom adapter:
+
+```python settings.py
+IDP_OIDC_ADAPTER = "myapp.adapters.CustomOIDCAdapter"
+```
+
+## API Integration
+
+django-allauth provides built-in authentication for popular API frameworks.
+
+### Django REST Framework
+
+```python
+from rest_framework.views import APIView
+from allauth.idp.oidc.contrib.rest_framework.authentication import TokenAuthentication
+from allauth.idp.oidc.contrib.rest_framework.permissions import TokenPermission
+
+class ResourceView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [TokenPermission.has_scope(["view-resource"])]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        # Access token scopes available in request.auth.scopes
+        return Response({"message": f"Hello {user.username}"})
+```
+
+### Django Ninja
+
+```python
+from ninja import NinjaAPI
+from allauth.idp.oidc.contrib.ninja.security import TokenAuth
+
+api = NinjaAPI()
+
+@api.get("/api/resource", auth=[TokenAuth(scope=["view-resource"])])
+def resource(request):
+    user = request.auth  # The authenticated user
+    return {"message": f"Hello {user.username}"}
+```
+
+## Discovery Endpoints
+
+OIDC providers expose discovery endpoints that clients can use to automatically configure themselves:
+
+### Provider Configuration
+
+```bash
+curl https://your-domain.com/.well-known/openid-configuration
+```
+
+Response:
+```json
+{
+  "issuer": "https://your-domain.com",
+  "authorization_endpoint": "https://your-domain.com/identity/o/authorize",
+  "token_endpoint": "https://your-domain.com/identity/o/api/token",
+  "userinfo_endpoint": "https://your-domain.com/identity/o/api/userinfo",
+  "jwks_uri": "https://your-domain.com/.well-known/jwks.json",
+  "response_types_supported": ["code"],
+  "subject_types_supported": ["public"],
+  "id_token_signing_alg_values_supported": ["RS256"]
+}
+```
+
+### JWKS Endpoint
+
+```bash
+curl https://your-domain.com/.well-known/jwks.json
+```
+
+Response:
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "use": "sig",
+      "kid": "...",
+      "n": "...",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
+## Production Checklist
+
+<AccordionGroup>
+  <Accordion title="Security">
+    - [ ] Use HTTPS in production
+    - [ ] Store private keys securely (environment variables, secrets manager)
+    - [ ] Enable CSRF protection
+    - [ ] Validate all redirect URIs
+    - [ ] Implement rate limiting
+    - [ ] Enable token rotation
+    - [ ] Use short-lived access tokens
+    - [ ] Monitor for suspicious activity
+  </Accordion>
+
+  <Accordion title="Configuration">
+    - [ ] Set appropriate token expiration times
+    - [ ] Configure CORS origins properly
+    - [ ] Set up proper redirect URIs
+    - [ ] Enable rate limiting
+    - [ ] Configure session settings
+    - [ ] Set up proper cookie domains
+  </Accordion>
+
+  <Accordion title="Infrastructure">
+    - [ ] Use a reverse proxy (nginx, Apache)
+    - [ ] Configure SSL/TLS properly
+    - [ ] Set up database backups
+    - [ ] Configure logging and monitoring
+    - [ ] Set up error tracking
+    - [ ] Plan for key rotation
+  </Accordion>
+</AccordionGroup>
+
+## Troubleshooting
+
+### Common Issues
+
+**"invalid_client" error**
+
+Ensure the client ID and secret are correct and the client exists in the database.
+
+**"redirect_uri_mismatch" error**
+
+The redirect URI in the request must exactly match one of the URIs configured for the client.
+
+**"invalid_scope" error**
+
+The requested scopes must be a subset of the scopes allowed for the client.
+
+**Token signature validation fails**
+
+Verify that the JWKS endpoint is accessible and the private key is correctly configured.
+
+**CORS errors**
+
+Add the client's origin to the CORS origins list for the OAuth client.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Adapter Reference" icon="code" href="/reference/adapter">
+    Learn about all available adapter methods
+  </Card>
+  <Card title="Example Implementations" icon="book" href="/examples/idp">
+    See complete examples of IDP implementations
+  </Card>
+</CardGroup>

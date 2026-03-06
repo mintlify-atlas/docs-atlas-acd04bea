@@ -1,0 +1,495 @@
+---
+title: Social Account Configuration
+description: Complete reference for configuring django-allauth social authentication
+---
+
+## Configuration Methods
+
+django-allauth supports two methods for configuring social providers:
+
+1. **Settings-based**: Define configuration in `settings.py`
+2. **Database-based**: Create `SocialApp` instances via Django admin
+
+<Warning>
+  **Avoid Mixing Methods**: Don't configure the same provider using both methods simultaneously, as this will cause a `MultipleObjectsReturned` exception.
+</Warning>
+
+## Settings-Based Configuration
+
+Define providers in your `settings.py`:
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    "github": {
+        # Provider-level settings
+        "VERIFIED_EMAIL": True,
+        
+        # App credentials (optional if using Django admin)
+        "APPS": [
+            {
+                "client_id": "your-github-client-id",
+                "secret": "your-github-secret",
+                "key": "",
+                "settings": {
+                    # App-specific settings
+                    "scope": ["user", "repo"],
+                },
+            },
+        ],
+        
+        # Default settings for all apps
+        "SCOPE": ["user"],
+    },
+    "google": {
+        "APPS": [
+            {
+                "client_id": "your-google-client-id",
+                "secret": "your-google-secret",
+                "settings": {
+                    "scope": ["profile", "email"],
+                    "auth_params": {
+                        "access_type": "online",
+                    },
+                },
+            },
+        ],
+    },
+}
+```
+
+### Benefits
+- Secrets managed in environment variables or secret management systems
+- Version controlled configuration (without secrets)
+- Simpler deployment and CI/CD workflows
+
+## Database-Based Configuration
+
+Create `SocialApp` instances via Django admin at `/admin/socialaccount/socialapp/`:
+
+1. Navigate to Social applications
+2. Click "Add social application"
+3. Fill in the form:
+   - **Provider**: Select from dropdown
+   - **Name**: Display name (your choice)
+   - **Client id**: From provider's developer console
+   - **Secret key**: From provider's developer console
+   - **Key**: Usually left blank
+   - **Sites**: Select applicable sites (if using django.contrib.sites)
+   - **Settings**: JSON field for provider-specific settings
+
+### Benefits
+- No code changes needed to update credentials
+- Multi-tenant support via Django sites framework
+- Non-technical staff can manage configurations
+
+<Warning>
+  **Security Consideration**: Database-based configuration stores secrets in your database. Ensure proper database security, encryption at rest, and access controls.
+</Warning>
+
+## Global Settings
+
+All settings are prefixed with `SOCIALACCOUNT_` in your `settings.py`.
+
+### SOCIALACCOUNT_ADAPTER
+
+**Default**: `"allauth.socialaccount.adapter.DefaultSocialAccountAdapter"`
+
+Specifies the adapter class for customizing behavior.
+
+```python
+SOCIALACCOUNT_ADAPTER = 'myapp.adapters.MySocialAccountAdapter'
+```
+
+### SOCIALACCOUNT_AUTO_SIGNUP
+
+**Default**: `True`
+
+Attempt to bypass the signup form by using fields retrieved from the social provider (username, email). If a conflict arises (duplicate email), the signup form still appears.
+
+```python
+SOCIALACCOUNT_AUTO_SIGNUP = True
+```
+
+### SOCIALACCOUNT_EMAIL_AUTHENTICATION
+
+**Default**: `False`
+
+When enabled, users logging in via a social provider with a verified email that matches an existing local account will be logged into that local account, even without a prior connection.
+
+<Warning>
+  **Security Risk**: Only enable for fully trusted providers. An untrustworthy provider could fabricate social account data to access any local account.
+</Warning>
+
+```python
+# Enable globally (not recommended)
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+
+# Enable per-provider (recommended)
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'EMAIL_AUTHENTICATION': True
+    }
+}
+```
+
+### SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT
+
+**Default**: `False`
+
+When email authentication is applied, controls whether the social account is automatically connected to the local account.
+
+- `False`: Local account remains unchanged; future logins require email authentication each time
+- `True`: Social account is connected; future logins work even if the email changes
+
+```python
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+```
+
+### SOCIALACCOUNT_EMAIL_VERIFICATION
+
+**Default**: `ACCOUNT_EMAIL_VERIFICATION`
+
+Email verification method for social accounts. Inherits from account settings by default.
+
+```python
+from allauth.account.models import EmailVerificationMethod
+
+SOCIALACCOUNT_EMAIL_VERIFICATION = EmailVerificationMethod.OPTIONAL
+```
+
+### SOCIALACCOUNT_EMAIL_REQUIRED
+
+**Default**: `"email*" in ACCOUNT_SIGNUP_FIELDS`
+
+Require email address when signing up with a social account.
+
+```python
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+```
+
+### SOCIALACCOUNT_QUERY_EMAIL
+
+**Default**: Same as `SOCIALACCOUNT_EMAIL_REQUIRED`
+
+Request email address from the provider (e.g., using OpenID AX or OAuth scopes).
+
+```python
+SOCIALACCOUNT_QUERY_EMAIL = True
+```
+
+### SOCIALACCOUNT_FORMS
+
+**Default**: 
+```python
+{
+    'disconnect': 'allauth.socialaccount.forms.DisconnectForm',
+    'signup': 'allauth.socialaccount.forms.SignupForm',
+}
+```
+
+Override default forms.
+
+```python
+SOCIALACCOUNT_FORMS = {
+    'disconnect': 'myapp.forms.CustomDisconnectForm',
+    'signup': 'myapp.forms.CustomSocialSignupForm',
+}
+```
+
+### SOCIALACCOUNT_LOGIN_ON_GET
+
+**Default**: `False`
+
+Controls whether social login endpoints (e.g., `/accounts/google/login/`) accept GET requests to initiate authentication.
+
+<Warning>
+  **Security Best Practice**: Keep this `False` to require POST requests and prevent CSRF attacks.
+</Warning>
+
+```python
+SOCIALACCOUNT_LOGIN_ON_GET = False
+```
+
+### SOCIALACCOUNT_STORE_TOKENS
+
+**Default**: `False`
+
+Store OAuth access tokens in the database. Required if you need to make API calls on behalf of users.
+
+<Info>
+  Tokens are only stored when the social account is stored. This doesn't work with `EMAIL_AUTHENTICATION` unless `EMAIL_AUTHENTICATION_AUTO_CONNECT` is also enabled.
+</Info>
+
+```python
+SOCIALACCOUNT_STORE_TOKENS = True
+```
+
+Access tokens later:
+
+```python
+from allauth.socialaccount.models import SocialToken
+
+token = SocialToken.objects.get(account__user=user, account__provider='google')
+access_token = token.token
+refresh_token = token.token_secret  # For OAuth2
+```
+
+### SOCIALACCOUNT_REQUESTS_TIMEOUT
+
+**Default**: `5`
+
+Timeout in seconds for upstream requests to providers.
+
+```python
+SOCIALACCOUNT_REQUESTS_TIMEOUT = 10
+```
+
+### SOCIALACCOUNT_SOCIALACCOUNT_STR
+
+**Default**: `str` of user object
+
+Customize the string representation of SocialAccount.
+
+```python
+def my_socialaccount_str(socialaccount):
+    return f"{socialaccount.user.email} ({socialaccount.provider})"
+
+SOCIALACCOUNT_SOCIALACCOUNT_STR = my_socialaccount_str
+```
+
+### SOCIALACCOUNT_ONLY
+
+**Default**: `False`
+
+Disable all local account functionality. Users can only authenticate via social providers.
+
+```python
+SOCIALACCOUNT_ONLY = True
+```
+
+### SOCIALACCOUNT_OPENID_CONNECT_URL_PREFIX
+
+**Default**: `"oidc"`
+
+URL path prefix for OpenID Connect providers. With default settings, a provider with ID `foo` uses `/accounts/oidc/foo/login/`.
+
+```python
+SOCIALACCOUNT_OPENID_CONNECT_URL_PREFIX = "openid"
+```
+
+## Provider-Specific Configuration
+
+Each provider supports specific configuration options via `SOCIALACCOUNT_PROVIDERS`.
+
+### Common OAuth2 Settings
+
+Most OAuth2 providers support these settings:
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'provider_name': {
+        # OAuth scopes to request
+        'SCOPE': ['scope1', 'scope2'],
+        
+        # Additional auth parameters
+        'AUTH_PARAMS': {
+            'param_name': 'param_value',
+        },
+        
+        # Whether emails from this provider are verified
+        'VERIFIED_EMAIL': True,
+        
+        # Enable PKCE (OAuth2.1)
+        'OAUTH_PKCE_ENABLED': True,
+    }
+}
+```
+
+### App-Level Settings
+
+Settings can also be configured per app:
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APPS': [
+            {
+                'client_id': 'prod-client-id',
+                'secret': 'prod-secret',
+                'settings': {
+                    # These override provider-level settings
+                    'scope': ['profile', 'email', 'calendar.readonly'],
+                    'auth_params': {
+                        'access_type': 'offline',  # Request refresh token
+                    },
+                },
+            },
+        ],
+        # Provider-level defaults
+        'SCOPE': ['profile', 'email'],
+    }
+}
+```
+
+## Example Configurations
+
+### Google with Offline Access
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APPS': [
+            {
+                'client_id': os.environ['GOOGLE_CLIENT_ID'],
+                'secret': os.environ['GOOGLE_SECRET'],
+                'settings': {
+                    'scope': ['profile', 'email'],
+                    'auth_params': {
+                        'access_type': 'offline',
+                        'prompt': 'consent',
+                    },
+                },
+            },
+        ],
+        'OAUTH_PKCE_ENABLED': True,
+    }
+}
+```
+
+### GitHub with Custom Scopes
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'github': {
+        'APPS': [
+            {
+                'client_id': os.environ['GITHUB_CLIENT_ID'],
+                'secret': os.environ['GITHUB_SECRET'],
+            },
+        ],
+        'SCOPE': ['user', 'repo', 'read:org'],
+        'VERIFIED_EMAIL': True,
+    }
+}
+```
+
+### Multiple OpenID Connect Providers
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'openid_connect': {
+        'OAUTH_PKCE_ENABLED': True,
+        'APPS': [
+            {
+                'provider_id': 'company-sso',
+                'name': 'Company SSO',
+                'client_id': 'company-client-id',
+                'secret': 'company-secret',
+                'settings': {
+                    'server_url': 'https://sso.company.com',
+                },
+            },
+            {
+                'provider_id': 'partner-sso',
+                'name': 'Partner SSO',
+                'client_id': 'partner-client-id',
+                'secret': 'partner-secret',
+                'settings': {
+                    'server_url': 'https://sso.partner.com',
+                    'token_auth_method': 'client_secret_post',
+                },
+            },
+        ],
+    }
+}
+```
+
+### SAML Configuration
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'saml': {
+        'APPS': [
+            {
+                'name': 'Acme Inc SSO',
+                'provider_id': 'urn:acme.com',
+                'client_id': 'acme-inc',  # Organization slug
+                'settings': {
+                    'attribute_mapping': {
+                        'uid': 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier',
+                        'email': 'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress',
+                        'email_verified': 'http://schemas.auth0.com/email_verified',
+                    },
+                    'idp': {
+                        'entity_id': 'urn:acme.com',
+                        'metadata_url': 'https://acme.com/saml/metadata',
+                    },
+                },
+            },
+        ],
+    }
+}
+```
+
+## Environment Variables
+
+Best practice for managing secrets:
+
+```python
+import os
+
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'APPS': [
+            {
+                'client_id': os.environ.get('GOOGLE_CLIENT_ID'),
+                'secret': os.environ.get('GOOGLE_SECRET'),
+            },
+        ],
+    },
+    'github': {
+        'APPS': [
+            {
+                'client_id': os.environ.get('GITHUB_CLIENT_ID'),
+                'secret': os.environ.get('GITHUB_SECRET'),
+            },
+        ],
+    },
+}
+```
+
+In `.env` file:
+```bash
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_SECRET=your-google-secret
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_SECRET=your-github-secret
+```
+
+## Multi-Tenant Configuration
+
+Using Django sites framework for different configurations per domain:
+
+```python
+# Enable sites framework
+INSTALLED_APPS = [
+    'django.contrib.sites',
+    # ...
+]
+
+SITE_ID = 1
+```
+
+Create separate `SocialApp` instances via admin and assign to different sites. Each site can have different credentials for the same provider.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Providers" icon="plug" href="/socialaccount/providers">
+    Explore provider-specific configuration options
+  </Card>
+  
+  <Card title="Advanced Usage" icon="code" href="/socialaccount/advanced">
+    Learn about adapters, custom redirects, and more
+  </Card>
+</CardGroup>

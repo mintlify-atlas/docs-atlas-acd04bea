@@ -1,0 +1,96 @@
+---
+title: Introduction
+description: Overview of django-allauth headless mode for single-page and mobile applications
+---
+
+The `allauth.headless` app provides comprehensive support for building single-page applications (SPAs) and mobile apps with django-allauth. It offers a REST API that handles all authentication flows while maintaining the full feature set of django-allauth.
+
+## What is Headless Mode?
+
+Headless mode separates the authentication backend from the frontend presentation layer. Instead of server-rendered HTML pages, django-allauth provides JSON-based REST API endpoints that your frontend application can consume.
+
+This approach enables you to:
+
+- Build modern single-page applications using React, Vue, Angular, or any JavaScript framework
+- Develop native mobile applications for iOS and Android
+- Create custom authentication experiences with full control over UI/UX
+- Implement authentication across multiple frontend applications using a single backend
+
+## Key Features
+
+### Complete Authentication Flows
+
+The headless API supports all django-allauth features:
+
+- **Account management**: Login, signup, logout, password management
+- **Email verification**: Required or optional verification with code or link-based flows
+- **Password reset**: Traditional email link or modern code-based reset
+- **Social authentication**: OAuth integration with third-party providers
+- **Multi-factor authentication**: TOTP, recovery codes, and WebAuthn/passkeys
+- **Session management**: View and manage active sessions across devices
+
+### Flexible Token Strategies
+
+Choose the authentication strategy that fits your architecture:
+
+- **Session tokens**: Simple session-based authentication with `X-Session-Token` header (default for mobile apps)
+- **JWT tokens**: Stateless or stateful JWT with access/refresh token pairs (ideal for microservices)
+- **Browser sessions**: Traditional Django sessions with CSRF protection (for SPAs on same domain)
+
+### Two Client Types
+
+The API supports different security models based on your application type:
+
+- **Browser clients**: Use CSRF tokens and cookies, suitable for SPAs hosted on the same domain
+- **App clients**: Use session or JWT tokens, designed for mobile apps and cross-origin SPAs
+
+## Architecture Overview
+
+In a typical headless setup:
+
+1. Your frontend application communicates with the Django backend via REST API
+2. The backend handles all authentication logic and database operations
+3. Authentication state is managed through tokens or sessions
+4. API responses include structured JSON data with user information and flow status
+
+```
+┌─────────────────┐          ┌─────────────────┐
+│                 │   HTTP   │                 │
+│  Frontend App   │◄────────►│  Django Backend │
+│  (React/Vue/    │   JSON   │  + allauth      │
+│   Mobile)       │          │   headless      │
+│                 │          │                 │
+└─────────────────┘          └─────────────────┘
+```
+
+## When to Use Headless Mode
+
+Headless mode is ideal when:
+
+- Building a single-page application with a JavaScript framework
+- Developing native mobile applications
+- Creating a custom authentication UI that differs from django-allauth's default templates
+- Implementing authentication across multiple frontend clients
+- Requiring API-first architecture for modern application design
+
+## Headless-Only Mode
+
+You can enable headless-only mode to completely disable django-allauth's traditional views:
+
+```python
+HEADLESS_ONLY = True
+```
+
+With this setting:
+
+- Login, signup, and account management views are disabled
+- Third-party provider callback endpoints remain active (required for OAuth handshake)
+- Your application relies entirely on the headless API
+- All authentication flows happen through JSON API endpoints
+
+## Next Steps
+
+- [Install and configure](/headless/installation) the headless app
+- Learn about [authentication flows](/headless/authentication)
+- Set up [CORS for SPAs](/headless/cors)
+- Configure [JWT tokens](/headless/configuration) or session-based auth

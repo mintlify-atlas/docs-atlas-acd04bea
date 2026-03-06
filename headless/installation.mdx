@@ -1,0 +1,245 @@
+---
+title: Installation
+description: Install and configure django-allauth headless for your application
+---
+
+This guide walks you through installing and setting up django-allauth headless mode for single-page or mobile applications.
+
+## Install the Package
+
+Install django-allauth with the headless extra:
+
+```bash
+pip install "django-allauth[headless]"
+```
+
+This installs the core allauth package plus dependencies required for the headless API.
+
+## Configure Django Settings
+
+Add the required apps to your `INSTALLED_APPS` in `settings.py`:
+
+```python
+INSTALLED_APPS = [
+    # Django core apps
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+
+    # Required for headless
+    'allauth',
+    'allauth.account',
+    'allauth.headless',
+
+    # Optional: Add features as needed
+    'allauth.socialaccount',  # For social authentication
+    'allauth.mfa',            # For multi-factor authentication
+    'allauth.usersessions',   # For session management
+
+    # Your apps
+    # ...
+]
+```
+
+## Configure Authentication Backend
+
+Ensure the allauth authentication backend is configured:
+
+```python
+AUTHENTICATION_BACKENDS = [
+    'allauth.account.auth_backends.AuthenticationBackend',
+]
+```
+
+## Configure Middleware
+
+Add the required middleware:
+
+```python
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'allauth.account.middleware.AccountMiddleware',  # Required
+]
+```
+
+## Configure Frontend URLs
+
+Define the URLs for your frontend application. These are used in emails for verification and password reset:
+
+```python
+HEADLESS_FRONTEND_URLS = {
+    # Email verification URL
+    "account_confirm_email": "https://app.example.com/account/verify-email/{key}",
+    
+    # Password reset URLs
+    "account_reset_password": "https://app.example.com/account/password/reset",
+    "account_reset_password_from_key": "https://app.example.com/account/password/reset/key/{key}",
+    
+    # Signup URL (used in some flows)
+    "account_signup": "https://app.example.com/account/signup",
+    
+    # Social auth error fallback
+    "socialaccount_login_error": "https://app.example.com/account/provider/callback",
+}
+```
+
+### URL Placeholders
+
+The `{key}` placeholder is automatically replaced with the actual verification or reset key. You can customize the URL structure:
+
+```python
+# Query parameter style
+"account_confirm_email": "https://app.example.com/verify?token={key}"
+
+# Path parameter style
+"account_confirm_email": "https://app.example.com/account/verify-email/{key}"
+```
+
+## Configure URL Patterns
+
+Add the headless API endpoints to your project's `urls.py`:
+
+```python
+from django.contrib import admin
+from django.urls import path, include
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    
+    # allauth URLs (includes provider callbacks)
+    # Even in headless mode, these are needed for OAuth handshakes
+    path('accounts/', include('allauth.urls')),
+    
+    # Headless API endpoints
+    path('_allauth/', include('allauth.headless.urls')),
+]
+```
+
+The headless API will be available at `/_allauth/browser/v1/` (for browser clients) and `/_allauth/app/v1/` (for app clients).
+
+## Basic Account Settings
+
+Configure basic account behavior:
+
+```python
+# Email is required for signup
+ACCOUNT_EMAIL_REQUIRED = True
+
+# Email verification is mandatory
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"  # or "optional" or "none"
+
+# Login with email (not username)
+ACCOUNT_AUTHENTICATION_METHOD = "email"
+
+# Don't require username during signup
+ACCOUNT_USERNAME_REQUIRED = False
+```
+
+## Headless-Only Mode (Optional)
+
+If your app is fully headless and you don't need the traditional django-allauth views:
+
+```python
+HEADLESS_ONLY = True
+```
+
+This disables the standard login/signup/password reset views while keeping provider callback endpoints active (required for OAuth).
+
+## Run Migrations
+
+Apply the database migrations:
+
+```bash
+python manage.py migrate
+```
+
+## Development Setup
+
+For local development, you might want to:
+
+### Use Console Email Backend
+
+View emails in the console instead of sending them:
+
+```python
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+```
+
+### Allow Localhost
+
+Add localhost to allowed hosts:
+
+```python
+ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+```
+
+### Configure Frontend URLs for Local Development
+
+```python
+HEADLESS_FRONTEND_URLS = {
+    "account_confirm_email": "http://localhost:3000/account/verify-email/{key}",
+    "account_reset_password_from_key": "http://localhost:3000/account/password/reset/key/{key}",
+    "account_reset_password": "http://localhost:3000/account/password/reset",
+    "account_signup": "http://localhost:3000/account/signup",
+}
+```
+
+## Verify Installation
+
+Start your Django development server:
+
+```bash
+python manage.py runserver
+```
+
+Visit the config endpoint to verify the installation:
+
+```bash
+curl http://localhost:8000/_allauth/browser/v1/config
+```
+
+You should receive a JSON response with configuration details:
+
+```json
+{
+  "status": 200,
+  "data": {
+    "account": {
+      "authentication_method": "email",
+      "is_open_for_signup": true,
+      "email_verification_by_code_enabled": false,
+      "login_by_code_enabled": false
+    }
+  }
+}
+```
+
+## Next Steps
+
+- [Configure authentication settings](/headless/configuration) including JWT tokens
+- [Set up CORS](/headless/cors) for cross-origin requests
+- Learn about [authentication flows](/headless/authentication)
+- Explore the OpenAPI specification at `/_allauth/openapi.html` (requires `django-allauth[headless-spec]`)
+
+## Common Issues
+
+### Missing Middleware Error
+
+If you see `allauth.account.middleware.AccountMiddleware must be added to settings.MIDDLEWARE`, add it to your middleware list.
+
+### CSRF Token Issues
+
+For browser clients, ensure CSRF middleware is enabled and you're sending the CSRF token in requests. For app clients, CSRF is not required.
+
+### Email Not Sending
+
+Configure a proper email backend for production. For development, use the console backend or a service like Mailhog.

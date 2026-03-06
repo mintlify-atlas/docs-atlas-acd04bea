@@ -1,0 +1,290 @@
+---
+title: SAML Identity Provider
+description: Information about SAML identity provider support in django-allauth
+---
+
+## Overview
+
+Currently, django-allauth **does not support** acting as a SAML identity provider (IdP). The SAML functionality in django-allauth is designed for consuming external SAML identity providers, not for operating as one.
+
+## What is Supported
+
+django-allauth provides comprehensive support for **authenticating users via external SAML identity providers**. This means your Django application can:
+
+- Authenticate users against enterprise SAML providers (Okta, Auth0, Azure AD, etc.)
+- Support multiple SAML providers for different organizations
+- Handle SAML metadata and assertions
+- Process single sign-on (SSO) and single logout (SLO) flows
+
+For details on using SAML for authentication, see the [SAML Provider documentation](/socialaccount/providers/saml).
+
+## Alternative: OpenID Connect
+
+If you need to turn your Django application into an identity provider, django-allauth offers full support for **OpenID Connect (OIDC)**. OIDC is a modern, simpler alternative to SAML that provides the same core functionality:
+
+### Why Choose OIDC Over SAML?
+
+**Simpler Implementation**
+: OIDC is built on top of OAuth 2.0 and uses JSON over HTTP, making it easier to implement and debug compared to SAML's XML-based approach.
+
+**Better Developer Experience**
+: OIDC has clearer specifications, better tooling, and is more developer-friendly.
+
+**Mobile & API Friendly**
+: OIDC was designed with modern applications in mind, with native support for mobile apps, SPAs, and API authentication.
+
+**Industry Adoption**
+: Major providers (Google, Microsoft, Auth0, Okta) all support OIDC, and many are recommending it over SAML for new integrations.
+
+**Standard Features**
+: OIDC provides:
+- User authentication and authorization
+- Single Sign-On (SSO)
+- Token-based access to APIs
+- User profile information via standard claims
+- Session management and logout
+
+### Feature Comparison
+
+| Feature | OIDC (Supported) | SAML (Not Supported) |
+|---------|------------------|----------------------|
+| Identity Provider | ✅ Yes | ❌ No |
+| Service Provider | ✅ Yes | ✅ Yes |
+| Single Sign-On | ✅ Yes | ✅ Yes (as SP only) |
+| Token Format | JWT | XML |
+| Transport | JSON over HTTP | XML over HTTP |
+| Mobile Support | Excellent | Limited |
+| API Integration | Native | Requires conversion |
+| Developer Experience | Simpler | More complex |
+
+## Using OpenID Connect as an Identity Provider
+
+To turn your Django application into an identity provider, use django-allauth's OpenID Connect support:
+
+### Quick Start
+
+1. **Install the OIDC IDP package**:
+
+```bash
+pip install "django-allauth[idp-oidc]"
+```
+
+2. **Add to INSTALLED_APPS**:
+
+```python settings.py
+INSTALLED_APPS = [
+    # ...
+    "allauth.idp.oidc",
+    # ...
+]
+```
+
+3. **Generate a private key**:
+
+```bash
+openssl genpkey -algorithm RSA -out private_key.pem -pkeyopt rsa_keygen_bits:2048
+```
+
+4. **Configure settings**:
+
+```python settings.py
+IDP_OIDC_PRIVATE_KEY = """-----BEGIN PRIVATE KEY-----
+...
+-----END PRIVATE KEY-----"""
+```
+
+5. **Configure URLs**:
+
+```python urls.py
+urlpatterns = [
+    path("", include("allauth.idp.urls")),
+    # ...
+]
+```
+
+6. **Run migrations**:
+
+```bash
+python manage.py migrate
+```
+
+7. **Create OAuth clients** via the Django admin
+
+For complete setup instructions, see the [OpenID Connect Provider Guide](/idp/openid-connect).
+
+## Migration from SAML
+
+If you're currently using SAML and considering OIDC:
+
+### For Enterprise Integrations
+
+Most enterprise identity providers that support SAML also support OIDC:
+
+- **Okta**: Full OIDC support
+- **Azure AD / Entra ID**: Recommends OIDC for new applications
+- **Auth0**: OIDC is the primary protocol
+- **Google Workspace**: Native OIDC support
+- **OneLogin**: Supports both SAML and OIDC
+
+### Migration Steps
+
+1. **Assess compatibility**: Check if your relying parties support OIDC
+2. **Set up OIDC provider**: Follow the OpenID Connect setup guide
+3. **Create OIDC clients**: Configure clients for each application
+4. **Test in parallel**: Run OIDC alongside existing integrations
+5. **Migrate gradually**: Move applications one at a time
+6. **Update documentation**: Ensure teams understand the new flow
+
+### What Changes for Users
+
+From an end-user perspective, the experience is nearly identical:
+
+- Users still get redirected to your app for authentication
+- Single Sign-On continues to work
+- Session management remains the same
+- Logout flows are similar
+
+The main difference is in the technical implementation, which is transparent to users.
+
+## SAML Service Provider Support
+
+While django-allauth doesn't support being a SAML IdP, it provides excellent support for **consuming SAML identity providers**:
+
+### Features
+
+- Support for multiple SAML providers
+- Organization-based routing
+- Flexible attribute mapping
+- Metadata management
+- Support for signed assertions
+- Single Logout (SLO) support
+
+### Example Configuration
+
+```python settings.py
+SOCIALACCOUNT_PROVIDERS = {
+    "saml": {
+        "APPS": [
+            {
+                "name": "Enterprise SSO",
+                "provider_id": "urn:example.com",
+                "client_id": "enterprise",
+                "settings": {
+                    "attribute_mapping": {
+                        "uid": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier",
+                        "email": "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress",
+                        "email_verified": "http://schemas.auth0.com/email_verified",
+                    },
+                    "idp": {
+                        "entity_id": "urn:example.com",
+                        "metadata_url": "https://idp.example.com/metadata",
+                    },
+                },
+            },
+        ],
+    },
+}
+```
+
+For complete SAML Service Provider documentation, see [SAML Provider](/socialaccount/providers/saml).
+
+## Use Cases Comparison
+
+### When to Use OIDC (Supported)
+
+✅ Building a new identity provider  
+✅ Providing SSO for your SaaS platform  
+✅ Authenticating mobile or single-page applications  
+✅ API authentication and authorization  
+✅ Modern web applications  
+✅ Developer-friendly integrations  
+
+### When You'd Need SAML IdP (Not Supported)
+
+❌ Integration with legacy enterprise systems that only support SAML  
+❌ Strict requirement to act as a SAML identity provider  
+❌ Organizations with SAML-only policies  
+
+<Note>
+  If you have a strict requirement to act as a SAML identity provider, you'll need to use a different solution or library alongside django-allauth. However, we recommend evaluating whether OIDC can meet your requirements, as most modern systems support it.
+</Note>
+
+## Third-Party SAML IdP Solutions
+
+If you absolutely need SAML IdP functionality, consider these approaches:
+
+### Commercial Solutions
+
+- **Auth0**: Provides both OIDC and SAML IdP capabilities
+- **Okta**: Full-featured enterprise identity platform
+- **Azure AD**: Microsoft's cloud identity service
+- **OneLogin**: Enterprise SSO and identity management
+
+### Open Source Options
+
+- **Keycloak**: Java-based identity and access management (supports SAML and OIDC)
+- **Shibboleth**: SAML-focused identity provider
+- **SimpleSAMLphp**: PHP-based SAML solution
+
+### Hybrid Approach
+
+You can use django-allauth for authentication and user management, then integrate with a dedicated SAML IdP:
+
+```
+┌──────────────────┐     Authentication      ┌──────────────────┐
+│                  │ ──────────────────────►  │                  │
+│  Django App      │                          │  Keycloak/Okta   │
+│  (django-allauth)│                          │  (SAML IdP)      │
+│                  │ ◄──────────────────────  │                  │
+└──────────────────┘     User Sync            └──────────────────┘
+                                                       │
+                                                       │ SAML
+                                                       ▼
+                                              ┌─────────────────┐
+                                              │  Legacy App     │
+                                              │  (SAML SP)      │
+                                              └─────────────────┘
+```
+
+## Frequently Asked Questions
+
+<AccordionGroup>
+  <Accordion title="Will SAML IdP support be added in the future?">
+    SAML IdP support is not currently on the roadmap. The focus is on providing the best OpenID Connect implementation, which covers the vast majority of use cases with a more modern, maintainable protocol.
+  </Accordion>
+
+  <Accordion title="Can I use django-allauth with an external SAML IdP?">
+    Yes! You can use django-allauth's OIDC provider functionality and integrate it with an external SAML IdP like Keycloak or Auth0, which can then provide SAML IdP capabilities.
+  </Accordion>
+
+  <Accordion title="Is OIDC as secure as SAML?">
+    Yes. OIDC is built on modern security standards and is considered equally secure when properly implemented. It uses JWT tokens, HTTPS, and supports all the same security features as SAML including MFA, session management, and secure token exchange.
+  </Accordion>
+
+  <Accordion title="Will my enterprise customers accept OIDC instead of SAML?">
+    Increasingly, yes. Most major enterprise identity providers (Okta, Azure AD, Google Workspace) support and even recommend OIDC for new integrations. It's worth starting the conversation with OIDC as it offers a better developer experience and is easier to maintain.
+  </Accordion>
+
+  <Accordion title="Can I convert SAML requests to OIDC?">
+    While not directly supported in django-allauth, you can use a protocol bridge like Keycloak to accept SAML requests and forward them as OIDC to your django-allauth provider. This adds complexity but can work if you absolutely need both protocols.
+  </Accordion>
+</AccordionGroup>
+
+## Getting Help
+
+If you have questions about:
+
+- **OIDC IdP setup**: See the [OpenID Connect guide](/idp/openid-connect)
+- **SAML as a Service Provider**: See the [SAML provider documentation](/socialaccount/providers/saml)
+- **General identity provider questions**: Visit the [django-allauth discussions](https://github.com/pennersr/django-allauth/discussions)
+
+## Summary
+
+<Card title="Quick Reference" icon="list-check">
+  - ❌ SAML Identity Provider: **Not supported**
+  - ✅ SAML Service Provider: **Fully supported**
+  - ✅ OIDC Identity Provider: **Fully supported** (recommended)
+  - ✅ OIDC Relying Party: **Fully supported**
+</Card>
+
+For most use cases requiring identity provider functionality, we strongly recommend using django-allauth's [OpenID Connect provider](/idp/openid-connect), which offers a modern, well-supported, and developer-friendly alternative to SAML.

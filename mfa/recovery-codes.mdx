@@ -1,0 +1,514 @@
+---
+title: Recovery Codes
+description: Implement backup authentication codes for account recovery when primary MFA methods are unavailable
+---
+
+Recovery codes are single-use backup codes that allow users to access their account if they lose access to their primary MFA method (TOTP authenticator, security key, etc.).
+
+## How Recovery Codes Work
+
+Recovery codes are:
+- **Automatically generated** when a user enables their first MFA method
+- **Single-use** - each code can only be used once
+- **Numeric** - typically 8-digit codes by default
+- **Cryptographically secure** - generated using HMAC-SHA1 with a random seed
+
+## Configuration
+
+Recovery codes are enabled by default:
+
+```python settings.py
+# Recovery codes are included by default
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+
+# Customize recovery code settings
+MFA_RECOVERY_CODE_COUNT = 10   # Number of codes to generate
+MFA_RECOVERY_CODE_DIGITS = 8   # Number of digits per code
+```
+
+## Settings Reference
+
+### `MFA_RECOVERY_CODE_COUNT`
+
+**Default:** `10`
+
+The number of recovery codes to generate for each user.
+
+```python
+MFA_RECOVERY_CODE_COUNT = 10  # Generate 10 codes
+```
+
+### `MFA_RECOVERY_CODE_DIGITS`
+
+**Default:** `8`
+
+The number of digits in each recovery code.
+
+```python
+MFA_RECOVERY_CODE_DIGITS = 8  # 8-digit codes like: 12345678
+```
+
+<Note>
+Longer codes are more secure but harder to type. 8 digits provides a good balance between security and usability.
+</Note>
+
+## URL Endpoints
+
+Recovery code URLs are available at:
+
+- `/accounts/mfa/recovery-codes/` - View unused recovery codes
+- `/accounts/mfa/recovery-codes/generate/` - Generate new recovery codes
+- `/accounts/mfa/recovery-codes/download/` - Download codes as text file
+
+## Automatic Generation
+
+Recovery codes are automatically generated when a user activates their first MFA method:
+
+```python
+from allauth.mfa.totp.internal import flows
+
+# When activating TOTP
+totp_auth, rc_auth = flows.activate_totp(request, form)
+
+if rc_auth:
+    # Recovery codes were automatically generated
+    # Redirect to view them
+    return redirect('mfa_view_recovery_codes')
+```
+
+## Viewing Recovery Codes
+
+Users can view their unused recovery codes at any time (requires reauthentication):
+
+```html templates/mfa/recovery_codes/index.html
+{% extends "account/base.html" %}
+
+{% block content %}
+  <h1>Recovery Codes</h1>
+  
+  <p>Save these codes in a safe place. Each code can only be used once.</p>
+  
+  <div class="recovery-codes">
+    {% for code in unused_codes %}
+      <code>{{ code }}</code>{% if not forloop.last %}, {% endif %}
+    {% endfor %}
+  </div>
+  
+  <p>{{ unused_codes|length }} of {{ total_count }} codes remaining</p>
+  
+  <a href="{% url 'mfa_download_recovery_codes' %}" download>
+    Download codes
+  </a>
+  
+  <a href="{% url 'mfa_generate_recovery_codes' %}">
+    Generate new codes
+  </a>
+{% endblock %}
+```
+
+## Downloading Recovery Codes
+
+Users can download their codes as a plain text file:
+
+```python
+# GET /accounts/mfa/recovery-codes/download/
+# Returns a text file with content:
+"""
+Recovery Codes
+--------------
+12345678
+23456789
+34567890
+...
+"""
+```
+
+The response includes the header:
+```
+Content-Disposition: attachment; filename="recovery-codes.txt"
+```
+
+## Regenerating Recovery Codes
+
+Users can generate new recovery codes (invalidates old ones):
+
+```html templates/mfa/recovery_codes/generate.html
+{% extends "account/base.html" %}
+
+{% block content %}
+  <h1>Generate New Recovery Codes</h1>
+  
+  {% if unused_code_count > 0 %}
+    <p class="warning">
+      You currently have {{ unused_code_count }} unused recovery codes.
+      Generating new codes will invalidate all existing codes.
+    </p>
+  {% endif %}
+  
+  <form method="post">
+    {% csrf_token %}
+    <button type="submit">Generate New Codes</button>
+  </form>
+{% endblock %}
+```
+
+## Programmatic Usage
+
+### Generate Recovery Codes
+
+```python
+from allauth.mfa.recovery_codes.internal.auth import RecoveryCodes
+
+# Generate/get recovery codes for a user
+rc = RecoveryCodes.activate(user)
+
+# Generate all codes (used and unused)
+all_codes = rc.generate_codes()
+# Returns: ['12345678', '23456789', ...]
+
+# Get only unused codes
+unused_codes = rc.get_unused_codes()
+# Returns: ['23456789', '34567890', ...]  (excludes used codes)
+```
+
+### Validate a Recovery Code
+
+```python
+from allauth.mfa.models import Authenticator
+
+# Get user's recovery codes authenticator
+authenticator = Authenticator.objects.get(
+    user=user,
+    type=Authenticator.Type.RECOVERY_CODES
+)
+
+# Validate a code
+rc = authenticator.wrap()
+user_code = request.POST.get('code')
+
+if rc.validate_code(user_code):
+    # Code is valid and has been marked as used
+    authenticator.record_usage()
+    # Allow login
+else:
+    # Invalid or already used code
+    # Reject login
+```
+
+### Check Remaining Codes
+
+```python
+from allauth.mfa.recovery_codes.internal.auth import RecoveryCodes
+from allauth.mfa.models import Authenticator
+from allauth.mfa import app_settings
+
+authenticator = Authenticator.objects.get(
+    user=user,
+    type=Authenticator.Type.RECOVERY_CODES
+)
+
+rc = authenticator.wrap()
+unused_count = len(rc.get_unused_codes())
+total_count = app_settings.RECOVERY_CODE_COUNT
+
+if unused_count < 3:
+    # Warn user to generate new codes
+    messages.warning(request, f"You only have {unused_count} recovery codes remaining.")
+```
+
+### Regenerate Codes
+
+```python
+from allauth.mfa.recovery_codes.internal import flows
+
+# Regenerate recovery codes
+flows.generate_recovery_codes(request)
+
+# This creates a new seed and invalidates all old codes
+```
+
+## How Codes Are Generated
+
+Recovery codes are generated using HMAC-SHA1:
+
+```python
+import hmac
+import secrets
+from hashlib import sha1
+
+# 1. Generate random seed (done once)
+seed = secrets.token_hex(40)  # 40 bytes of random data
+
+# 2. Generate codes from seed
+def generate_codes(seed):
+    codes = []
+    h = hmac.new(key=seed.encode('ascii'), msg=None, digestmod=sha1)
+    
+    for i in range(MFA_RECOVERY_CODE_COUNT):
+        # Update HMAC with counter
+        h.update(f"{i:3},".encode('utf-8'))
+        
+        # Extract bytes and convert to number
+        byte_count = min(MFA_RECOVERY_CODE_DIGITS // 2, h.digest_size)
+        value = int.from_bytes(h.digest()[:byte_count], byteorder='big')
+        
+        # Convert to N-digit code
+        value %= 10 ** MFA_RECOVERY_CODE_DIGITS
+        code = str(value).zfill(MFA_RECOVERY_CODE_DIGITS)
+        codes.append(code)
+    
+    return codes
+```
+
+### Storage Format
+
+Recovery codes are stored in the `Authenticator` model:
+
+```python
+{
+    "type": "recovery_codes",
+    "data": {
+        "seed": "encrypted_random_seed",
+        "used_mask": 5  # Bitmap: 0b101 = codes 0 and 2 used
+    }
+}
+```
+
+The `used_mask` is a bitmask where each bit represents whether a code has been used:
+- Bit 0 = first code
+- Bit 1 = second code
+- etc.
+
+## Encryption
+
+The seed is encrypted before storage:
+
+```python
+from allauth.mfa.utils import encrypt, decrypt
+
+# Encryption (automatic)
+encrypted_seed = encrypt(seed)
+
+# Decryption when needed
+seed = decrypt(encrypted_seed)
+```
+
+To add custom encryption, override the adapter:
+
+```python myapp/adapter.py
+from allauth.mfa.adapter import DefaultMFAAdapter
+from cryptography.fernet import Fernet
+
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def encrypt(self, text):
+        cipher = Fernet(settings.MFA_ENCRYPTION_KEY)
+        return cipher.encrypt(text.encode()).decode()
+    
+    def decrypt(self, encrypted_text):
+        cipher = Fernet(settings.MFA_ENCRYPTION_KEY)
+        return cipher.decrypt(encrypted_text.encode()).decode()
+```
+
+```python settings.py
+MFA_ADAPTER = 'myapp.adapter.CustomMFAAdapter'
+MFA_ENCRYPTION_KEY = Fernet.generate_key()
+```
+
+## Migration Support
+
+If you're migrating from another system with existing recovery codes:
+
+```python
+# Store migrated codes directly
+authenticator = Authenticator(
+    user=user,
+    type=Authenticator.Type.RECOVERY_CODES,
+    data={
+        "migrated_codes": [
+            encrypt("12345678"),
+            encrypt("23456789"),
+            # ...
+        ]
+    }
+)
+authenticator.save()
+```
+
+Migrated codes:
+- Are stored as an encrypted list
+- Are removed from the list when used
+- Don't use the seed-based generation
+
+## Forms Customization
+
+Override the recovery code generation form:
+
+```python settings.py
+MFA_FORMS = {
+    'generate_recovery_codes': 'myapp.forms.CustomGenerateRecoveryCodesForm',
+}
+```
+
+```python myapp/forms.py
+from allauth.mfa.recovery_codes.forms import GenerateRecoveryCodesForm
+
+class CustomGenerateRecoveryCodesForm(GenerateRecoveryCodesForm):
+    def clean(self):
+        cleaned_data = super().clean()
+        # Add custom validation
+        # For example, require user to have at least one other MFA method
+        return cleaned_data
+```
+
+## User Experience Best Practices
+
+### Show Codes Immediately After Generation
+
+After enabling MFA, redirect users to view their recovery codes:
+
+```python
+class ActivateTOTPView(FormView):
+    def form_valid(self, form):
+        totp_auth, rc_auth = flows.activate_totp(self.request, form)
+        if rc_auth:
+            # Show recovery codes to user
+            return redirect('mfa_view_recovery_codes')
+        return redirect('mfa_index')
+```
+
+### Warn When Codes Are Low
+
+```python
+def check_recovery_codes(user):
+    authenticator = Authenticator.objects.filter(
+        user=user,
+        type=Authenticator.Type.RECOVERY_CODES
+    ).first()
+    
+    if authenticator:
+        unused_count = len(authenticator.wrap().get_unused_codes())
+        if unused_count < 3:
+            return True  # Show warning
+    return False
+```
+
+### Download Instructions
+
+Encourage users to download and securely store their codes:
+
+```html
+<div class="recovery-codes-instructions">
+  <h3>Important: Save Your Recovery Codes</h3>
+  <ul>
+    <li>Download and print these codes</li>
+    <li>Store them in a secure location</li>
+    <li>Each code can only be used once</li>
+    <li>You can generate new codes at any time</li>
+  </ul>
+</div>
+```
+
+## Security Considerations
+
+### Single Use
+
+Each code can only be used once. After validation, the code is marked as used:
+
+```python
+def validate_code(self, code):
+    for i, c in enumerate(self.generate_codes()):
+        if self._is_code_used(i):
+            continue  # Skip used codes
+        if code == c:
+            self._mark_code_used(i)  # Mark as used
+            return True
+    return False
+```
+
+### Secure Storage
+
+Users should store recovery codes:
+- In a password manager
+- In a secure physical location (safe, lockbox)
+- Never in plain text on their device
+
+### Regeneration
+
+When codes are regenerated:
+- All old codes are invalidated
+- A new seed is generated
+- Users must download/save the new codes
+
+## Testing
+
+### Generate Test Codes
+
+```python
+from allauth.mfa.recovery_codes.internal.auth import RecoveryCodes
+from allauth.mfa.models import Authenticator
+
+# Create test user with recovery codes
+user = User.objects.create_user('test@example.com')
+rc = RecoveryCodes.activate(user)
+codes = rc.get_unused_codes()
+
+print("Test recovery codes:")
+for code in codes:
+    print(code)
+```
+
+### Test Code Validation
+
+```python
+from django.test import TestCase
+
+class RecoveryCodeTest(TestCase):
+    def test_code_single_use(self):
+        user = User.objects.create_user('test@example.com')
+        rc = RecoveryCodes.activate(user)
+        codes = rc.get_unused_codes()
+        
+        # First use - should succeed
+        self.assertTrue(rc.validate_code(codes[0]))
+        
+        # Second use - should fail
+        self.assertFalse(rc.validate_code(codes[0]))
+```
+
+## Common Issues
+
+### Codes Not Generated
+
+Ensure recovery codes are enabled:
+
+```python
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]  # Include "recovery_codes"
+```
+
+### Can't View Codes
+
+Check that the user has MFA enabled:
+
+```python
+from allauth.mfa.utils import is_mfa_enabled
+
+if not is_mfa_enabled(request.user):
+    # User doesn't have MFA enabled
+    # Redirect to enable MFA first
+```
+
+### Codes Already Used
+
+If all codes are used, users must:
+1. Use an alternative MFA method (TOTP, WebAuthn) to log in
+2. Generate new recovery codes
+
+If locked out, administrators can:
+- Disable MFA for the user in Django admin
+- Or generate new codes programmatically
+
+## Related
+
+- [TOTP Authentication](/mfa/totp) - Time-based one-time passwords
+- [WebAuthn](/mfa/webauthn) - Hardware key authentication
+- [Configuration](/configuration/mfa) - All MFA settings

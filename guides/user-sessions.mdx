@@ -1,0 +1,340 @@
+---
+title: Managing User Sessions
+description: Track and manage active user sessions across multiple devices with django-allauth
+---
+
+## Overview
+
+The `allauth.usersessions` app allows users to view and manage all their active sessions across different devices and browsers. This is essential for security-conscious applications where users need visibility and control over their account access.
+
+## Installation
+
+Add the usersessions app to your Django project:
+
+```python settings.py
+INSTALLED_APPS = [
+    # ...
+    'django.contrib.humanize',  # Required for user-friendly date formatting
+    'allauth.usersessions',
+    # ...
+]
+```
+
+Run migrations to create the necessary database tables:
+
+```bash
+python manage.py migrate
+```
+
+## Basic Configuration
+
+By default, user sessions are created at login but not actively tracked. To enable session tracking:
+
+```python settings.py
+# Track session activity (IP address, user agent, last seen timestamp)
+USERSESSIONS_TRACK_ACTIVITY = True
+
+# Add the middleware to enable tracking
+MIDDLEWARE = [
+    # ...
+    'allauth.usersessions.middleware.UserSessionsMiddleware',
+    # ...
+]
+```
+
+<Warning>
+The middleware is **only required** when `USERSESSIONS_TRACK_ACTIVITY = True`. Without it, sessions are created at login but not updated during subsequent requests.
+</Warning>
+
+## URL Configuration
+
+Include the usersessions URLs in your project:
+
+```python urls.py
+from django.urls import path, include
+
+urlpatterns = [
+    # ...
+    path('accounts/', include('allauth.urls')),  # This includes usersessions URLs
+    # ...
+]
+```
+
+The main URL endpoint is:
+- `/accounts/sessions/` - List and manage active sessions
+
+## User Session Model
+
+Each session is stored in the `UserSession` model with the following fields:
+
+| Field | Description |
+|-------|-------------|
+| `user` | Foreign key to the user |
+| `session_key` | Django session key (unique) |
+| `ip` | IP address of the session |
+| `user_agent` | Browser/device user agent string |
+| `created_at` | When the session was created |
+| `last_seen_at` | Last activity timestamp (if tracking enabled) |
+| `data` | JSON field for additional metadata |
+
+## Displaying Active Sessions
+
+Create a view to show users their active sessions:
+
+```python views.py
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from allauth.usersessions.models import UserSession
+
+@login_required
+def my_sessions(request):
+    # Get all active sessions for the current user
+    sessions = UserSession.objects.purge_and_list(request.user)
+    
+    return render(request, 'my_sessions.html', {
+        'sessions': sessions,
+        'current_session_key': request.session.session_key,
+    })
+```
+
+```html my_sessions.html
+{% load humanize %}
+
+<h2>Active Sessions</h2>
+<p>These are all devices currently logged into your account.</p>
+
+<ul>
+{% for session in sessions %}
+    <li>
+        <strong>{{ session.user_agent|truncatewords:8 }}</strong>
+        <br>
+        IP: {{ session.ip }}
+        <br>
+        Created: {{ session.created_at|naturaltime }}
+        {% if session.is_current %}
+            <span class="badge">Current Session</span>
+        {% endif %}
+    </li>
+{% endfor %}
+</ul>
+```
+
+## Ending Sessions
+
+Allow users to terminate specific sessions:
+
+```python views.py
+from django.contrib import messages
+from django.shortcuts import redirect
+from allauth.usersessions.models import UserSession
+
+@login_required
+def end_session(request, session_id):
+    try:
+        session = UserSession.objects.get(
+            id=session_id,
+            user=request.user
+        )
+        
+        # Don't allow ending the current session this way
+        if session.is_current():
+            messages.error(request, "Cannot end your current session. Use logout instead.")
+        else:
+            session.end()
+            messages.success(request, "Session ended successfully.")
+    except UserSession.DoesNotExist:
+        messages.error(request, "Session not found.")
+    
+    return redirect('my_sessions')
+```
+
+## Ending All Other Sessions
+
+Implement a "logout all other devices" feature:
+
+```python views.py
+from allauth.usersessions.adapter import get_adapter
+
+@login_required
+def logout_all_other_sessions(request):
+    # Get all sessions except the current one
+    sessions = UserSession.objects.filter(
+        user=request.user
+    ).exclude(
+        session_key=request.session.session_key
+    )
+    
+    # End all sessions using the adapter
+    adapter = get_adapter()
+    adapter.end_sessions(sessions)
+    
+    messages.success(
+        request,
+        f"Logged out {sessions.count()} other session(s)."
+    )
+    return redirect('my_sessions')
+```
+
+## Security Notifications
+
+Detect and notify users when their session's IP or user agent changes:
+
+```python signals.py
+from django.dispatch import receiver
+from django.core.mail import send_mail
+from allauth.usersessions.signals import session_client_changed
+
+@receiver(session_client_changed)
+def notify_session_change(sender, request, from_session, to_session, **kwargs):
+    """Notify user when their session IP or user agent changes."""
+    user = request.user
+    
+    # Send security notification
+    send_mail(
+        subject='Security Alert: Session Details Changed',
+        message=f"""
+        Your session details have changed:
+        
+        Previous IP: {from_session.ip}
+        New IP: {to_session.ip}
+        
+        Previous Device: {from_session.user_agent}
+        New Device: {to_session.user_agent}
+        
+        If this wasn't you, please secure your account immediately.
+        """,
+        from_email='security@example.com',
+        recipient_list=[user.email],
+    )
+```
+
+Register the signal handler:
+
+```python apps.py
+from django.apps import AppConfig
+
+class MyAppConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'myapp'
+    
+    def ready(self):
+        import myapp.signals  # noqa
+```
+
+## Custom Adapter
+
+Customize session management behavior:
+
+```python adapters.py
+from allauth.usersessions.adapter import DefaultUserSessionsAdapter
+
+class MyUserSessionsAdapter(DefaultUserSessionsAdapter):
+    def end_sessions(self, sessions):
+        """Override to add custom logic when sessions are ended."""
+        # Log session termination
+        for session in sessions:
+            print(f"Ending session {session.id} for user {session.user}")
+            session.end()
+```
+
+```python settings.py
+USERSESSIONS_ADAPTER = 'myapp.adapters.MyUserSessionsAdapter'
+```
+
+## Session Cleanup
+
+The `purge_and_list()` method automatically removes stale sessions (where the Django session no longer exists):
+
+```python
+# Manually purge stale sessions for a user
+sessions = UserSession.objects.purge_and_list(user)
+```
+
+Consider adding a periodic cleanup task:
+
+```python management/commands/cleanup_sessions.py
+from django.core.management.base import BaseCommand
+from django.contrib.auth import get_user_model
+from allauth.usersessions.models import UserSession
+
+class Command(BaseCommand):
+    help = 'Remove stale user sessions'
+    
+    def handle(self, *args, **options):
+        User = get_user_model()
+        total_purged = 0
+        
+        for user in User.objects.all():
+            sessions = UserSession.objects.purge_and_list(user)
+            purged = UserSession.objects.filter(user=user).count() - len(sessions)
+            total_purged += purged
+        
+        self.stdout.write(
+            self.style.SUCCESS(f'Purged {total_purged} stale sessions')
+        )
+```
+
+## Configuration Reference
+
+### USERSESSIONS_ADAPTER
+
+**Default:** `"allauth.usersessions.adapter.DefaultUserSessionsAdapter"`
+
+Path to the adapter class for customizing session management behavior.
+
+### USERSESSIONS_TRACK_ACTIVITY
+
+**Default:** `False`
+
+When enabled, sessions are actively tracked:
+- IP address is updated on each request
+- User agent is updated on each request  
+- `last_seen_at` timestamp is updated
+
+Requires `allauth.usersessions.middleware.UserSessionsMiddleware` in `MIDDLEWARE`.
+
+## Best Practices
+
+1. **Enable Activity Tracking**: Set `USERSESSIONS_TRACK_ACTIVITY = True` to maintain accurate session information.
+
+2. **Monitor Session Changes**: Use the `session_client_changed` signal to detect suspicious activity.
+
+3. **Regular Cleanup**: Implement periodic cleanup of stale sessions to keep your database clean.
+
+4. **User Education**: Provide clear information about active sessions in your UI so users understand what they're seeing.
+
+5. **Security Alerts**: Consider sending notifications for critical events like:
+   - New login from unknown device
+   - IP address changes
+   - All sessions terminated
+
+6. **Session Limits**: Consider implementing limits on concurrent sessions per user if needed for your security model.
+
+## Complete Example
+
+Here's a complete implementation:
+
+```python settings.py
+INSTALLED_APPS = [
+    'django.contrib.humanize',
+    'allauth',
+    'allauth.account',
+    'allauth.usersessions',
+]
+
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'allauth.usersessions.middleware.UserSessionsMiddleware',
+]
+
+USERSESSIONS_TRACK_ACTIVITY = True
+USERSESSIONS_ADAPTER = 'myapp.adapters.MyUserSessionsAdapter'
+
+# Enable security notifications
+ACCOUNT_EMAIL_NOTIFICATIONS = True
+```
+
+This provides users with complete visibility and control over their account sessions across all devices.

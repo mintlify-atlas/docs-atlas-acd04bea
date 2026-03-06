@@ -1,0 +1,986 @@
+---
+title: Settings
+description: Complete reference for all django-allauth configuration settings
+---
+
+django-allauth provides extensive configuration options through Django settings. All settings are prefixed with either `ACCOUNT_` for account-related settings, `SOCIALACCOUNT_` for social authentication, or `ALLAUTH_` for global settings.
+
+## Global Settings
+
+### ALLAUTH_DEFAULT_AUTO_FIELD
+
+**Type:** `str | None`  
+**Default:** `None`  
+**Source:** `allauth/app_settings.py:48`
+
+Can be set to configure the primary key of all models.
+
+```python
+ALLAUTH_DEFAULT_AUTO_FIELD = "hashid_field.HashidAutoField"
+```
+
+### ALLAUTH_TRUSTED_PROXY_COUNT
+
+**Type:** `int`  
+**Default:** `0`  
+**Source:** `allauth/app_settings.py:52`
+
+As the `X-Forwarded-For` header can be spoofed, you need to configure the number of proxies that are under your control and hence, can be trusted. The default is 0, meaning no proxies are trusted. As a result, the `X-Forwarded-For` header will be disregarded by default.
+
+```python
+ALLAUTH_TRUSTED_PROXY_COUNT = 1
+```
+
+### ALLAUTH_TRUSTED_CLIENT_IP_HEADER
+
+**Type:** `str | None`  
+**Default:** `None`  
+**Source:** `allauth/app_settings.py:62`
+
+If your service is running behind a trusted proxy that sets a custom header containing the client IP address, specify that header name here. The client IP will be extracted from this header instead of `X-Forwarded-For`.
+
+```python
+# For Cloudflare
+ALLAUTH_TRUSTED_CLIENT_IP_HEADER = "CF-Connecting-IP"
+
+# For nginx
+ALLAUTH_TRUSTED_CLIENT_IP_HEADER = "X-Real-IP"
+```
+
+## Account Settings
+
+### General
+
+#### ACCOUNT_ADAPTER
+
+**Type:** `str`  
+**Default:** `"allauth.account.adapter.DefaultAccountAdapter"`  
+**Source:** `allauth/account/app_settings.py:390`
+
+Specifies the adapter class to use, allowing you to alter certain default behaviour. See [Adapters](/configuration/adapters) for details.
+
+```python
+ACCOUNT_ADAPTER = "myproject.adapters.MyAccountAdapter"
+```
+
+#### ACCOUNT_FORMS
+
+**Type:** `dict`  
+**Default:** `{}`  
+**Source:** `allauth/account/app_settings.py:464`
+
+Used to override the builtin forms. See [Forms](/configuration/forms) for details.
+
+```python
+ACCOUNT_FORMS = {
+    'login': 'myproject.forms.MyLoginForm',
+    'signup': 'myproject.forms.MySignupForm',
+    'add_email': 'myproject.forms.MyAddEmailForm',
+    'change_password': 'myproject.forms.MyChangePasswordForm',
+    'reset_password': 'myproject.forms.MyResetPasswordForm',
+    'reset_password_from_key': 'myproject.forms.MyResetPasswordKeyForm',
+    'set_password': 'myproject.forms.MySetPasswordForm',
+}
+```
+
+#### ACCOUNT_PREVENT_ENUMERATION
+
+**Type:** `bool | Literal["strict"]`  
+**Default:** `True`  
+**Source:** `allauth/account/app_settings.py:36`
+
+Controls whether or not information is revealed about whether or not a user account exists. For example, by entering random email addresses in the password reset form you can test whether or not those email addresses are associated with an account.
+
+When set to `"strict"`, allows signups to go through even with existing email addresses to prevent enumeration.
+
+```python
+ACCOUNT_PREVENT_ENUMERATION = True
+```
+
+#### ACCOUNT_TEMPLATE_EXTENSION
+
+**Type:** `str`  
+**Default:** `"html"`  
+**Source:** `allauth/account/app_settings.py:457`
+
+A string defining the template extension to use.
+
+```python
+ACCOUNT_TEMPLATE_EXTENSION = "jinja"
+```
+
+### Signup
+
+#### ACCOUNT_SIGNUP_FIELDS
+
+**Type:** `dict`  
+**Default:** See below  
+**Source:** `allauth/account/app_settings.py:328`
+
+The fields to include in the signup form. Fields are specified as a dictionary where each key is a field name and the value is a dictionary with configuration options.
+
+```python
+# Default configuration
+ACCOUNT_SIGNUP_FIELDS = {
+    'email': {'required': False},
+    'username': {'required': True},
+    'password1': {'required': True},
+    'password2': {'required': True},
+}
+
+# Require email
+ACCOUNT_SIGNUP_FIELDS = {
+    'email': {'required': True},
+    'username': {'required': True},
+    'password1': {'required': True},
+    'password2': {'required': True},
+}
+
+# Email only signup
+ACCOUNT_SIGNUP_FIELDS = {
+    'email': {'required': True},
+    'password1': {'required': True},
+}
+```
+
+#### ACCOUNT_SIGNUP_FORM_CLASS
+
+**Type:** `str | None`  
+**Default:** `None`  
+**Source:** `allauth/account/app_settings.py:314`
+
+A string pointing to a custom form class that is used during signup to ask the user for additional input. This class should derive from `forms.Form` and implement a `def signup(self, request, user)` method.
+
+```python
+ACCOUNT_SIGNUP_FORM_CLASS = "myproject.forms.CustomSignupForm"
+```
+
+#### ACCOUNT_SIGNUP_FORM_HONEYPOT_FIELD
+
+**Type:** `str | None`  
+**Default:** `None`  
+**Source:** `allauth/account/app_settings.py:321`
+
+Honeypot field name. Empty string or `None` will disable honeypot behavior. The field should be hidden to normal users but might be filled out by naive spam bots.
+
+```python
+ACCOUNT_SIGNUP_FORM_HONEYPOT_FIELD = "phone_number"
+```
+
+#### ACCOUNT_SIGNUP_REDIRECT_URL
+
+**Type:** `str`  
+**Default:** `settings.LOGIN_REDIRECT_URL`  
+**Source:** `allauth/account/app_settings.py:242`
+
+The URL to redirect to directly after signing up.
+
+```python
+ACCOUNT_SIGNUP_REDIRECT_URL = "/welcome/"
+```
+
+### Login
+
+#### ACCOUNT_LOGIN_METHODS
+
+**Type:** `frozenset`  
+**Default:** `{LoginMethod.USERNAME}`  
+**Source:** `allauth/account/app_settings.py:159`
+
+Specifies the login methods to use -- whether the user logs in by entering their username, email address, phone number, or a combination.
+
+```python
+from allauth.account.app_settings import AppSettings
+
+# Email only
+ACCOUNT_LOGIN_METHODS = {AppSettings.LoginMethod.EMAIL}
+
+# Username or email
+ACCOUNT_LOGIN_METHODS = {AppSettings.LoginMethod.USERNAME, AppSettings.LoginMethod.EMAIL}
+
+# Phone number
+ACCOUNT_LOGIN_METHODS = {AppSettings.LoginMethod.PHONE}
+```
+
+#### ACCOUNT_LOGIN_TIMEOUT
+
+**Type:** `int`  
+**Default:** `900` (15 minutes)  
+**Source:** `allauth/account/app_settings.py:561`
+
+The maximum allowed time (in seconds) for a login to go through the various login stages. This limits, for example, the time span that the 2FA stage remains available.
+
+```python
+ACCOUNT_LOGIN_TIMEOUT = 1800  # 30 minutes
+```
+
+#### ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:402`
+
+Automatically log the user in once they confirmed their email address.
+
+```python
+ACCOUNT_LOGIN_ON_EMAIL_CONFIRMATION = True
+```
+
+#### ACCOUNT_LOGIN_ON_PASSWORD_RESET
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:409`
+
+Automatically log the user in immediately after resetting their password.
+
+```python
+ACCOUNT_LOGIN_ON_PASSWORD_RESET = True
+```
+
+#### ACCOUNT_AUTHENTICATED_LOGIN_REDIRECTS
+
+**Type:** `bool`  
+**Default:** `True`  
+**Source:** `allauth/account/app_settings.py:398`
+
+Whether authenticated users are automatically redirected when accessing login/signup pages.
+
+```python
+ACCOUNT_AUTHENTICATED_LOGIN_REDIRECTS = False
+```
+
+### Login by Code
+
+#### ACCOUNT_LOGIN_BY_CODE_ENABLED
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:545`
+
+Enables "Magic Code Login" where users receive a one-time code via email instead of entering a password.
+
+```python
+ACCOUNT_LOGIN_BY_CODE_ENABLED = True
+```
+
+#### ACCOUNT_LOGIN_BY_CODE_REQUIRED
+
+**Type:** `bool | set[str]`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:570`
+
+When enabled, every user logging in is required to input a login confirmation code sent by email. Alternatively, specify a set of authentication methods (`"password"`, `"mfa"`, or `"socialaccount"`) for which login codes are required.
+
+```python
+# Always required
+ACCOUNT_LOGIN_BY_CODE_REQUIRED = True
+
+# Only for password authentication
+ACCOUNT_LOGIN_BY_CODE_REQUIRED = {"password"}
+```
+
+#### ACCOUNT_LOGIN_BY_CODE_MAX_ATTEMPTS
+
+**Type:** `int`  
+**Default:** `3`  
+**Source:** `allauth/account/app_settings.py:553`
+
+Maximum number of attempts the user has at inputting a valid code.
+
+```python
+ACCOUNT_LOGIN_BY_CODE_MAX_ATTEMPTS = 5
+```
+
+#### ACCOUNT_LOGIN_BY_CODE_TIMEOUT
+
+**Type:** `int`  
+**Default:** `180` (3 minutes)  
+**Source:** `allauth/account/app_settings.py:557`
+
+The code expiration time in seconds.
+
+```python
+ACCOUNT_LOGIN_BY_CODE_TIMEOUT = 300  # 5 minutes
+```
+
+#### ACCOUNT_LOGIN_BY_CODE_TRUST_ENABLED
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:549`
+
+Enables the MFA "Trust this browser?" functionality for login by code. Requires the MFA app to be installed.
+
+```python
+ACCOUNT_LOGIN_BY_CODE_TRUST_ENABLED = True
+```
+
+### Logout
+
+#### ACCOUNT_LOGOUT_ON_GET
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:423`
+
+Determines whether or not the user is automatically logged out by a GET request. For security reasons, POST requests are recommended.
+
+```python
+ACCOUNT_LOGOUT_ON_GET = True
+```
+
+#### ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:427`
+
+Determines whether or not the user is automatically logged out after changing their password.
+
+```python
+ACCOUNT_LOGOUT_ON_PASSWORD_CHANGE = True
+```
+
+#### ACCOUNT_LOGOUT_REDIRECT_URL
+
+**Type:** `str`  
+**Default:** `settings.LOGOUT_REDIRECT_URL or "/"`  
+**Source:** `allauth/account/app_settings.py:417`
+
+The URL to return to after the user logs out.
+
+```python
+ACCOUNT_LOGOUT_REDIRECT_URL = "/goodbye/"
+```
+
+### Email Verification
+
+#### ACCOUNT_EMAIL_VERIFICATION
+
+**Type:** `EmailVerificationMethod`  
+**Default:** `EmailVerificationMethod.OPTIONAL`  
+**Source:** `allauth/account/app_settings.py:89`
+
+Determines the email verification method during signup:
+- `"mandatory"`: User is blocked from logging in until email is verified
+- `"optional"`: Email verification sent, but user can login with unverified email
+- `"none"`: No email verification mails are sent
+
+```python
+from allauth.account.app_settings import AppSettings
+
+ACCOUNT_EMAIL_VERIFICATION = AppSettings.EmailVerificationMethod.MANDATORY
+```
+
+#### ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:102`
+
+Controls whether email verification is performed by entering a code (True) or following a link (False).
+
+```python
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+```
+
+#### ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS
+
+**Type:** `int`  
+**Default:** `3`  
+**Source:** `allauth/account/app_settings.py:106`
+
+Maximum number of attempts for inputting a valid verification code.
+
+```python
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_MAX_ATTEMPTS = 5
+```
+
+#### ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT
+
+**Type:** `int`  
+**Default:** `900` (15 minutes)  
+**Source:** `allauth/account/app_settings.py:110`
+
+The code expiration time in seconds.
+
+```python
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT = 600  # 10 minutes
+```
+
+#### ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS
+
+**Type:** `int`  
+**Default:** `3`  
+**Source:** `allauth/account/app_settings.py:44`
+
+Determines the expiration date of email confirmation mails (number of days).
+
+```python
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 7
+```
+
+#### ACCOUNT_EMAIL_CONFIRMATION_HMAC
+
+**Type:** `bool`  
+**Default:** `True`  
+**Source:** `allauth/account/app_settings.py:468`
+
+Use HMAC based keys that do not require server side state for email verification.
+
+```python
+ACCOUNT_EMAIL_CONFIRMATION_HMAC = True
+```
+
+#### ACCOUNT_CONFIRM_EMAIL_ON_GET
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:394`
+
+Determines whether an email address is automatically confirmed by a GET request.
+
+```python
+ACCOUNT_CONFIRM_EMAIL_ON_GET = True
+```
+
+### Email Management
+
+#### ACCOUNT_EMAIL_REQUIRED
+
+**Type:** `bool`  
+**Default:** Derived from `SIGNUP_FIELDS`  
+**Source:** `allauth/account/app_settings.py:77` (deprecated)
+
+Whether the user is required to provide an email address when signing up. Use `ACCOUNT_SIGNUP_FIELDS` instead.
+
+#### ACCOUNT_UNIQUE_EMAIL
+
+**Type:** `bool`  
+**Default:** `True`  
+**Source:** `allauth/account/app_settings.py:213`
+
+Enforce uniqueness of email addresses. Only one user account can have an email address marked as verified.
+
+```python
+ACCOUNT_UNIQUE_EMAIL = True
+```
+
+#### ACCOUNT_MAX_EMAIL_ADDRESSES
+
+**Type:** `int | None`  
+**Default:** `None`  
+**Source:** `allauth/account/app_settings.py:135`
+
+The maximum amount of email addresses a user can associate to their account.
+
+```python
+ACCOUNT_MAX_EMAIL_ADDRESSES = 3
+```
+
+#### ACCOUNT_CHANGE_EMAIL
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:139`
+
+When enabled, users are limited to having exactly one email address that they can change by adding a temporary second email address.
+
+```python
+ACCOUNT_CHANGE_EMAIL = True
+```
+
+#### ACCOUNT_EMAIL_MAX_LENGTH
+
+**Type:** `int`  
+**Default:** `254`  
+**Source:** `allauth/account/app_settings.py:172`
+
+Maximum length of the email field.
+
+```python
+ACCOUNT_EMAIL_MAX_LENGTH = 191  # For MySQL utf8mb4
+```
+
+#### ACCOUNT_EMAIL_SUBJECT_PREFIX
+
+**Type:** `str | None`  
+**Default:** `None`  
+**Source:** `allauth/account/app_settings.py:307`
+
+Subject-line prefix for email messages sent. By default, the name of the current Site is used.
+
+```python
+ACCOUNT_EMAIL_SUBJECT_PREFIX = "[MyApp] "
+```
+
+#### ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS
+
+**Type:** `bool`  
+**Default:** `True`  
+**Source:** `allauth/account/app_settings.py:529`
+
+Configures whether password reset attempts for email addresses without an account result in sending an email.
+
+```python
+ACCOUNT_EMAIL_UNKNOWN_ACCOUNTS = False
+```
+
+#### ACCOUNT_EMAIL_NOTIFICATIONS
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:537`
+
+When enabled, account-related security notifications will be emailed.
+
+```python
+ACCOUNT_EMAIL_NOTIFICATIONS = True
+```
+
+### Password Management
+
+#### ACCOUNT_PASSWORD_MIN_LENGTH
+
+**Type:** `int | None`  
+**Default:** `6` (if no Django validators)  
+**Source:** `allauth/account/app_settings.py:248`
+
+Minimum password length. Only used if Django's `AUTH_PASSWORD_VALIDATORS` is empty.
+
+```python
+ACCOUNT_PASSWORD_MIN_LENGTH = 8
+```
+
+#### ACCOUNT_PASSWORD_INPUT_RENDER_VALUE
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:383`
+
+`render_value` parameter as passed to `PasswordInput` fields.
+
+```python
+ACCOUNT_PASSWORD_INPUT_RENDER_VALUE = True
+```
+
+#### ACCOUNT_PASSWORD_RESET_BY_CODE_ENABLED
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:505`
+
+Controls whether password reset is performed by entering a code (True) or following a link (False).
+
+```python
+ACCOUNT_PASSWORD_RESET_BY_CODE_ENABLED = True
+```
+
+#### ACCOUNT_PASSWORD_RESET_BY_CODE_MAX_ATTEMPTS
+
+**Type:** `int`  
+**Default:** `3`  
+**Source:** `allauth/account/app_settings.py:509`
+
+Maximum number of attempts for inputting a valid password reset code.
+
+```python
+ACCOUNT_PASSWORD_RESET_BY_CODE_MAX_ATTEMPTS = 5
+```
+
+#### ACCOUNT_PASSWORD_RESET_BY_CODE_TIMEOUT
+
+**Type:** `int`  
+**Default:** `180` (3 minutes)  
+**Source:** `allauth/account/app_settings.py:513`
+
+The code expiration time in seconds.
+
+```python
+ACCOUNT_PASSWORD_RESET_BY_CODE_TIMEOUT = 300
+```
+
+#### ACCOUNT_PASSWORD_RESET_TOKEN_GENERATOR
+
+**Type:** `str`  
+**Default:** `"allauth.account.forms.EmailAwarePasswordResetTokenGenerator"`  
+**Source:** `allauth/account/app_settings.py:517`
+
+A string pointing to a custom token generator for password resets.
+
+```python
+ACCOUNT_PASSWORD_RESET_TOKEN_GENERATOR = "myproject.auth.CustomTokenGenerator"
+```
+
+### Phone Number
+
+#### ACCOUNT_PHONE_VERIFICATION_ENABLED
+
+**Type:** `bool`  
+**Default:** `True`  
+**Source:** `allauth/account/app_settings.py:179`
+
+Whether phone number verification is enabled.
+
+```python
+ACCOUNT_PHONE_VERIFICATION_ENABLED = False
+```
+
+#### ACCOUNT_PHONE_VERIFICATION_MAX_ATTEMPTS
+
+**Type:** `int`  
+**Default:** `3`  
+**Source:** `allauth/account/app_settings.py:183`
+
+Maximum number of attempts for phone verification.
+
+```python
+ACCOUNT_PHONE_VERIFICATION_MAX_ATTEMPTS = 5
+```
+
+#### ACCOUNT_PHONE_VERIFICATION_TIMEOUT
+
+**Type:** `int`  
+**Default:** `900` (15 minutes)  
+**Source:** `allauth/account/app_settings.py:209`
+
+Phone verification code timeout in seconds.
+
+```python
+ACCOUNT_PHONE_VERIFICATION_TIMEOUT = 600
+```
+
+### Username
+
+#### ACCOUNT_USERNAME_REQUIRED
+
+**Type:** `bool`  
+**Default:** Derived from `SIGNUP_FIELDS`  
+**Source:** `allauth/account/app_settings.py:357` (deprecated)
+
+Whether the user is required to enter a username when signing up. Use `ACCOUNT_SIGNUP_FIELDS` instead.
+
+#### ACCOUNT_USERNAME_MIN_LENGTH
+
+**Type:** `int`  
+**Default:** `1`  
+**Source:** `allauth/account/app_settings.py:369`
+
+Minimum username length.
+
+```python
+ACCOUNT_USERNAME_MIN_LENGTH = 3
+```
+
+#### ACCOUNT_USERNAME_BLACKLIST
+
+**Type:** `list[str]`  
+**Default:** `[]`  
+**Source:** `allauth/account/app_settings.py:376`
+
+List of usernames that are not allowed.
+
+```python
+ACCOUNT_USERNAME_BLACKLIST = ["admin", "root", "administrator"]
+```
+
+#### ACCOUNT_USERNAME_VALIDATORS
+
+**Type:** `str | None`  
+**Default:** `None`  
+**Source:** `allauth/account/app_settings.py:480`
+
+A path to a list of custom username validators.
+
+```python
+ACCOUNT_USERNAME_VALIDATORS = "myproject.validators.custom_username_validators"
+```
+
+#### ACCOUNT_PRESERVE_USERNAME_CASING
+
+**Type:** `bool`  
+**Default:** `True`  
+**Source:** `allauth/account/app_settings.py:476`
+
+Whether to preserve username casing or store in lowercase.
+
+```python
+ACCOUNT_PRESERVE_USERNAME_CASING = False
+```
+
+### User Model
+
+#### ACCOUNT_USER_MODEL_USERNAME_FIELD
+
+**Type:** `str`  
+**Default:** `"username"`  
+**Source:** `allauth/account/app_settings.py:431`
+
+The name of the field containing the username.
+
+```python
+ACCOUNT_USER_MODEL_USERNAME_FIELD = "user_name"
+```
+
+#### ACCOUNT_USER_MODEL_EMAIL_FIELD
+
+**Type:** `str`  
+**Default:** `"email"`  
+**Source:** `allauth/account/app_settings.py:435`
+
+The name of the field containing the email.
+
+```python
+ACCOUNT_USER_MODEL_EMAIL_FIELD = "email_address"
+```
+
+### Reauthentication
+
+#### ACCOUNT_REAUTHENTICATION_REQUIRED
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/account/app_settings.py:541`
+
+Whether reauthentication is required before the user can alter their account.
+
+```python
+ACCOUNT_REAUTHENTICATION_REQUIRED = True
+```
+
+#### ACCOUNT_REAUTHENTICATION_TIMEOUT
+
+**Type:** `int`  
+**Default:** `300` (5 minutes)  
+**Source:** `allauth/account/app_settings.py:533`
+
+Before asking the user to reauthenticate, check if a successful (re)authentication happened within this many seconds.
+
+```python
+ACCOUNT_REAUTHENTICATION_TIMEOUT = 600  # 10 minutes
+```
+
+### Rate Limits
+
+#### ACCOUNT_RATE_LIMITS
+
+**Type:** `dict`  
+**Default:** See below  
+**Source:** `allauth/account/app_settings.py:260`
+
+Rate limits for various actions. Set to `False` to disable all rate limiting.
+
+```python
+ACCOUNT_RATE_LIMITS = {
+    "change_password": "5/m/user",
+    "manage_email": "10/m/user",
+    "reset_password": "20/m/ip,5/m/key",
+    "reauthenticate": "10/m/user",
+    "reset_password_from_key": "20/m/ip",
+    "signup": "20/m/ip",
+    "login": "30/m/ip",
+    "login_failed": "10/m/ip,5/5m/key",
+    "confirm_email": "1/3m/key",
+}
+
+# Disable rate limiting
+ACCOUNT_RATE_LIMITS = False
+```
+
+### Sessions
+
+#### ACCOUNT_SESSION_REMEMBER
+
+**Type:** `bool | None`  
+**Default:** `None`  
+**Source:** `allauth/account/app_settings.py:448`
+
+Controls the life time of the session. Set to `None` to ask the user ("Remember me?"), `False` to not remember, and `True` to always remember.
+
+```python
+ACCOUNT_SESSION_REMEMBER = True
+```
+
+## Social Account Settings
+
+### SOCIALACCOUNT_ADAPTER
+
+**Type:** `str`  
+**Default:** `"allauth.socialaccount.adapter.DefaultSocialAccountAdapter"`  
+**Source:** `allauth/socialaccount/app_settings.py:123`
+
+Specifies the adapter class to use for social accounts.
+
+```python
+SOCIALACCOUNT_ADAPTER = "myproject.adapters.MySocialAccountAdapter"
+```
+
+### SOCIALACCOUNT_AUTO_SIGNUP
+
+**Type:** `bool`  
+**Default:** `True`  
+**Source:** `allauth/socialaccount/app_settings.py:19`
+
+Attempt to bypass the signup form by using fields retrieved from the social account provider.
+
+```python
+SOCIALACCOUNT_AUTO_SIGNUP = False
+```
+
+### SOCIALACCOUNT_EMAIL_REQUIRED
+
+**Type:** `bool`  
+**Default:** Derived from `ACCOUNT_SIGNUP_FIELDS`  
+**Source:** `allauth/socialaccount/app_settings.py:63`
+
+Whether the user is required to provide an email address when signing up via social account.
+
+```python
+SOCIALACCOUNT_EMAIL_REQUIRED = True
+```
+
+### SOCIALACCOUNT_EMAIL_VERIFICATION
+
+**Type:** `EmailVerificationMethod | None`  
+**Default:** `None`  
+**Source:** `allauth/socialaccount/app_settings.py:74`
+
+Email verification method for social accounts. When `None`, the default `allauth.account` logic applies.
+
+```python
+from allauth.account.app_settings import AppSettings
+
+SOCIALACCOUNT_EMAIL_VERIFICATION = AppSettings.EmailVerificationMethod.NONE
+```
+
+### SOCIALACCOUNT_EMAIL_AUTHENTICATION
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/socialaccount/app_settings.py:90`
+
+When enabled and the provider is fully trusted, treat a social login with a verified email as a login to an existing local account with that email, even if the social account is not connected.
+
+```python
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+```
+
+### SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/socialaccount/app_settings.py:109`
+
+When email authentication is applied, whether the social account is automatically connected to the local account.
+
+```python
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+```
+
+### SOCIALACCOUNT_FORMS
+
+**Type:** `dict`  
+**Default:** `{}`  
+**Source:** `allauth/socialaccount/app_settings.py:130`
+
+Used to override the builtin social account forms.
+
+```python
+SOCIALACCOUNT_FORMS = {
+    'signup': 'myproject.forms.MySocialSignupForm',
+}
+```
+
+### SOCIALACCOUNT_PROVIDERS
+
+**Type:** `dict`  
+**Default:** `{}`  
+**Source:** `allauth/socialaccount/app_settings.py:28`
+
+Provider-specific settings.
+
+```python
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'},
+        'APP': {
+            'client_id': 'your-client-id',
+            'secret': 'your-client-secret',
+        }
+    }
+}
+```
+
+### SOCIALACCOUNT_STORE_TOKENS
+
+**Type:** `bool`  
+**Default:** `False`  
+**Source:** `allauth/socialaccount/app_settings.py:138`
+
+Whether to store OAuth tokens in the database.
+
+```python
+SOCIALACCOUNT_STORE_TOKENS = True
+```
+
+### SOCIALACCOUNT_REQUESTS_TIMEOUT
+
+**Type:** `int`  
+**Default:** `5`  
+**Source:** `allauth/socialaccount/app_settings.py:150`
+
+Timeout for requests to social account providers.
+
+```python
+SOCIALACCOUNT_REQUESTS_TIMEOUT = 10
+```
+
+## Complete Example
+
+```python
+# settings.py
+from allauth.account.app_settings import AppSettings
+
+# Email-based authentication with mandatory verification
+ACCOUNT_LOGIN_METHODS = {AppSettings.LoginMethod.EMAIL}
+ACCOUNT_EMAIL_VERIFICATION = AppSettings.EmailVerificationMethod.MANDATORY
+ACCOUNT_SIGNUP_FIELDS = {
+    'email': {'required': True},
+    'password1': {'required': True},
+    'password2': {'required': True},
+}
+
+# Custom adapters and forms
+ACCOUNT_ADAPTER = "myproject.adapters.MyAccountAdapter"
+ACCOUNT_FORMS = {
+    'login': 'myproject.forms.MyLoginForm',
+    'signup': 'myproject.forms.MySignupForm',
+}
+
+# Security settings
+ACCOUNT_PREVENT_ENUMERATION = True
+ACCOUNT_REAUTHENTICATION_REQUIRED = True
+ACCOUNT_EMAIL_NOTIFICATIONS = True
+
+# Email verification by code
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_TIMEOUT = 600
+
+# Rate limiting
+ACCOUNT_RATE_LIMITS = {
+    "login": "20/m/ip",
+    "signup": "10/m/ip",
+}
+
+# Social authentication
+SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_EMAIL_VERIFICATION = AppSettings.EmailVerificationMethod.NONE
+SOCIALACCOUNT_PROVIDERS = {
+    'google': {
+        'SCOPE': ['profile', 'email'],
+        'AUTH_PARAMS': {'access_type': 'online'},
+    }
+}
+```

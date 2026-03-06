@@ -1,0 +1,532 @@
+---
+title: Headless Adapters
+description: Customize headless authentication behavior with adapter classes
+---
+
+The headless adapter allows you to customize various aspects of the headless authentication API, including user serialization, error messages, and frontend URL generation.
+
+## DefaultHeadlessAdapter
+
+The `DefaultHeadlessAdapter` class provides default implementations for all adapter methods. You can override specific methods to customize behavior.
+
+**Location**: `allauth.headless.adapter.DefaultHeadlessAdapter`
+
+## Configuration
+
+Specify your custom adapter in Django settings:
+
+```python
+# settings.py
+HEADLESS_ADAPTER = "myapp.adapters.CustomHeadlessAdapter"
+```
+
+## Creating a Custom Adapter
+
+Extend `DefaultHeadlessAdapter` and override the methods you need:
+
+```python
+from allauth.headless.adapter import DefaultHeadlessAdapter
+
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def serialize_user(self, user):
+        # Custom user serialization
+        return super().serialize_user(user)
+```
+
+Then configure it:
+
+```python
+HEADLESS_ADAPTER = "myapp.adapters.CustomHeadlessAdapter"
+```
+
+## Adapter Methods
+
+### serialize_user
+
+Serialize user data for API responses.
+
+```python
+def serialize_user(self, user) -> Dict[str, Any]:
+    """Serialize user instance to dictionary."""
+```
+
+**Parameters**
+
+<ParamField path="user" type="User">
+  Django user instance to serialize
+</ParamField>
+
+**Returns**
+
+<ResponseField name="return" type="dict">
+  Dictionary containing user data
+</ResponseField>
+
+**Default Implementation**
+
+The default implementation converts the user to a dataclass and returns non-empty fields:
+
+```json
+{
+  "id": 123,
+  "display": "John Doe",
+  "email": "john@example.com",
+  "username": "johndoe",
+  "has_usable_password": true
+}
+```
+
+**Customization Example**
+
+```python
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def serialize_user(self, user):
+        data = super().serialize_user(user)
+        # Add custom fields
+        data.update({
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_staff": user.is_staff,
+            "date_joined": user.date_joined.isoformat(),
+        })
+        return data
+```
+
+**Note**: If you need custom user payloads reflected in the OpenAPI specification, use `get_user_dataclass()` and `user_as_dataclass()` instead.
+
+---
+
+### get_user_dataclass
+
+Return a dataclass representing the user schema.
+
+```python
+def get_user_dataclass(self):
+    """Return dataclass for user schema."""
+```
+
+**Returns**
+
+<ResponseField name="return" type="type">
+  A Python dataclass type
+</ResponseField>
+
+**Default Implementation**
+
+The default implementation creates a dataclass with fields based on the user model:
+
+- `id`: User primary key (int, str, or UUID)
+- `display`: Display name (str)
+- `email`: Primary email address (Optional[str])
+- `username`: Username (str, if `USER_MODEL_USERNAME_FIELD` is set)
+- `has_usable_password`: Whether password is set (bool)
+
+**Customization Example**
+
+```python
+import dataclasses
+from typing import Optional
+
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def get_user_dataclass(self):
+        @dataclasses.dataclass
+        class CustomUser:
+            id: int = dataclasses.field(metadata={
+                "description": "User ID",
+                "example": 123
+            })
+            email: str = dataclasses.field(metadata={
+                "description": "Email address",
+                "example": "user@example.com"
+            })
+            display: str = dataclasses.field(metadata={
+                "description": "Display name",
+                "example": "John Doe"
+            })
+            first_name: str = dataclasses.field(metadata={
+                "description": "First name",
+                "example": "John"
+            })
+            last_name: str = dataclasses.field(metadata={
+                "description": "Last name",
+                "example": "Doe"
+            })
+            is_staff: bool = dataclasses.field(metadata={
+                "description": "Staff status",
+                "example": False
+            })
+        
+        return CustomUser
+```
+
+---
+
+### user_as_dataclass
+
+Convert a user instance to the dataclass returned by `get_user_dataclass()`.
+
+```python
+def user_as_dataclass(self, user):
+    """Convert user to dataclass instance."""
+```
+
+**Parameters**
+
+<ParamField path="user" type="User">
+  Django user instance
+</ParamField>
+
+**Returns**
+
+<ResponseField name="return" type="dataclass">
+  Instance of the dataclass from `get_user_dataclass()`
+</ResponseField>
+
+**Customization Example**
+
+```python
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def user_as_dataclass(self, user):
+        UserDc = self.get_user_dataclass()
+        return UserDc(
+            id=user.pk,
+            email=user.email,
+            display=f"{user.first_name} {user.last_name}",
+            first_name=user.first_name,
+            last_name=user.last_name,
+            is_staff=user.is_staff,
+        )
+```
+
+---
+
+### get_frontend_url
+
+Return the frontend URL for a given URL name.
+
+```python
+def get_frontend_url(self, urlname, **kwargs):
+    """Return frontend URL for the given URL name."""
+```
+
+**Parameters**
+
+<ParamField path="urlname" type="string">
+  URL name (e.g., `account_email_verification_sent`, `account_reset_password`)
+</ParamField>
+
+<ParamField path="**kwargs" type="dict">
+  URL parameters (e.g., `key` for verification links)
+</ParamField>
+
+**Returns**
+
+<ResponseField name="return" type="string">
+  Frontend URL
+</ResponseField>
+
+**Default Implementation**
+
+Looks up URLs in `HEADLESS_FRONTEND_URLS` setting:
+
+```python
+HEADLESS_FRONTEND_URLS = {
+    "account_reset_password": "/auth/password/reset/{key}",
+    "account_email_verification_sent": "/auth/verify-email",
+    "account_email_verify": "/auth/verify-email/{key}",
+}
+```
+
+**Customization Example**
+
+```python
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def get_frontend_url(self, urlname, **kwargs):
+        # Custom URL mapping
+        url_map = {
+            "account_reset_password": f"https://app.example.com/reset/{kwargs.get('key')}",
+            "account_email_verify": f"https://app.example.com/verify/{kwargs.get('key')}",
+        }
+        return url_map.get(urlname, "/")
+```
+
+**Use Case**
+
+These URLs are used in email templates when the frontend is separate from the backend (e.g., SPA, mobile app).
+
+---
+
+### error_messages
+
+Dictionary of error messages.
+
+```python
+error_messages = {
+    "account_not_found": "Unknown account.",
+    "client_id_required": "`client_id` required.",
+    "invalid_token": "Invalid token.",
+    "token_authentication_not_supported": "Provider does not support token authentication.",
+    "token_required": "`id_token` and/or `access_token` required.",
+    "required": "This field is required.",
+    "unknown_email": "Unknown email address.",
+    "unknown_provider": "Unknown provider.",
+    "invalid_url": "Invalid URL.",
+}
+```
+
+**Customization Example**
+
+```python
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    error_messages = {
+        **DefaultHeadlessAdapter.error_messages,
+        "account_not_found": "We couldn't find an account with that information.",
+        "invalid_token": "The provided token is invalid or has expired.",
+    }
+```
+
+## Accessing the Adapter
+
+You can access the configured adapter instance using `get_adapter()`:
+
+```python
+from allauth.headless.adapter import get_adapter
+
+adapter = get_adapter()
+user_data = adapter.serialize_user(request.user)
+```
+
+## Common Customization Patterns
+
+### Adding Profile Data
+
+Include related profile data in user serialization:
+
+```python
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def serialize_user(self, user):
+        data = super().serialize_user(user)
+        if hasattr(user, 'profile'):
+            data['profile'] = {
+                'avatar': user.profile.avatar.url if user.profile.avatar else None,
+                'bio': user.profile.bio,
+                'location': user.profile.location,
+            }
+        return data
+```
+
+### Including Permissions
+
+Add user permissions to the serialized data:
+
+```python
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def serialize_user(self, user):
+        data = super().serialize_user(user)
+        data['permissions'] = list(
+            user.user_permissions.values_list('codename', flat=True)
+        )
+        data['groups'] = list(
+            user.groups.values_list('name', flat=True)
+        )
+        return data
+```
+
+### Multi-tenant Support
+
+Add tenant information:
+
+```python
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def serialize_user(self, user):
+        data = super().serialize_user(user)
+        data['tenant'] = {
+            'id': user.tenant.id,
+            'name': user.tenant.name,
+            'slug': user.tenant.slug,
+        }
+        return data
+```
+
+### Custom Display Name
+
+Customize how display names are generated:
+
+```python
+from allauth.account.utils import user_display
+
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def user_as_dataclass(self, user):
+        dc = super().user_as_dataclass(user)
+        # Custom display name logic
+        if user.first_name and user.last_name:
+            display = f"{user.first_name} {user.last_name}"
+        elif user.first_name:
+            display = user.first_name
+        else:
+            display = user.email.split('@')[0]
+        
+        # Create new dataclass instance with updated display
+        UserDc = self.get_user_dataclass()
+        return UserDc(
+            id=dc.id,
+            display=display,
+            email=dc.email,
+            username=getattr(dc, 'username', None),
+            has_usable_password=dc.has_usable_password,
+        )
+```
+
+### Localized Error Messages
+
+Provide translated error messages:
+
+```python
+from django.utils.translation import gettext_lazy as _
+
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    error_messages = {
+        "account_not_found": _("Unknown account."),
+        "client_id_required": _("Client ID is required."),
+        "invalid_token": _("Invalid token."),
+        "token_authentication_not_supported": _("Provider does not support token authentication."),
+        "token_required": _("ID token and/or access token required."),
+        "required": _("This field is required."),
+        "unknown_email": _("Unknown email address."),
+        "unknown_provider": _("Unknown provider."),
+        "invalid_url": _("Invalid URL."),
+    }
+```
+
+### Dynamic Frontend URLs
+
+Generate frontend URLs based on request context:
+
+```python
+class CustomHeadlessAdapter(DefaultHeadlessAdapter):
+    def get_frontend_url(self, urlname, **kwargs):
+        # Get tenant subdomain from request
+        request = getattr(self, 'request', None)
+        if request:
+            tenant = request.headers.get('X-Tenant-Slug', 'www')
+            base_url = f"https://{tenant}.example.com"
+        else:
+            base_url = "https://www.example.com"
+        
+        # URL mapping
+        url_patterns = {
+            "account_reset_password": f"{base_url}/auth/password/reset/{kwargs.get('key')}",
+            "account_email_verify": f"{base_url}/auth/verify-email/{kwargs.get('key')}",
+        }
+        
+        return url_patterns.get(urlname, base_url)
+```
+
+## Integration with OpenAPI Specification
+
+When you customize `get_user_dataclass()`, the OpenAPI specification is automatically updated to reflect your custom schema.
+
+**Example**: After defining a custom dataclass with additional fields:
+
+```python
+@dataclasses.dataclass
+class CustomUser:
+    id: int
+    email: str
+    first_name: str
+    last_name: str
+```
+
+The OpenAPI spec will show:
+
+```yaml
+User:
+  type: object
+  properties:
+    id:
+      type: integer
+      description: User ID
+      example: 123
+    email:
+      type: string
+      description: Email address
+      example: user@example.com
+    first_name:
+      type: string
+      description: First name
+      example: John
+    last_name:
+      type: string
+      description: Last name
+      example: Doe
+```
+
+## Testing Custom Adapters
+
+Test your custom adapter methods:
+
+```python
+from django.test import TestCase, RequestFactory
+from django.contrib.auth import get_user_model
+from myapp.adapters import CustomHeadlessAdapter
+
+User = get_user_model()
+
+class CustomHeadlessAdapterTest(TestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.adapter = CustomHeadlessAdapter()
+        self.user = User.objects.create_user(
+            username='testuser',
+            email='test@example.com',
+            first_name='Test',
+            last_name='User',
+        )
+    
+    def test_serialize_user(self):
+        data = self.adapter.serialize_user(self.user)
+        self.assertEqual(data['email'], 'test@example.com')
+        self.assertEqual(data['first_name'], 'Test')
+        self.assertEqual(data['last_name'], 'User')
+    
+    def test_get_frontend_url(self):
+        request = self.factory.get('/')
+        self.adapter.request = request
+        url = self.adapter.get_frontend_url(
+            'account_reset_password',
+            key='abc123'
+        )
+        self.assertIn('abc123', url)
+```
+
+## Best Practices
+
+1. **Keep it simple**: Only override methods you need to customize
+2. **Call super()**: Use `super()` to preserve default behavior when extending methods
+3. **Avoid queries**: Don't make database queries in `serialize_user()` if possible; use `select_related()` or `prefetch_related()` before calling
+4. **Use dataclasses**: For OpenAPI integration, use `get_user_dataclass()` instead of overriding `serialize_user()`
+5. **Test thoroughly**: Write tests for all custom adapter methods
+6. **Document changes**: Document any custom behavior for your team
+7. **Consider performance**: Be mindful of performance when adding fields that require additional queries
+
+## Related Settings
+
+<ParamField path="HEADLESS_ADAPTER" type="string" default="allauth.headless.adapter.DefaultHeadlessAdapter">
+  Path to custom adapter class
+</ParamField>
+
+<ParamField path="HEADLESS_FRONTEND_URLS" type="dict" default="{}">
+  Mapping of URL names to frontend URL patterns
+</ParamField>
+
+**Example Configuration**
+
+```python
+# settings.py
+HEADLESS_ADAPTER = "myapp.adapters.CustomHeadlessAdapter"
+HEADLESS_FRONTEND_URLS = {
+    "account_reset_password": "https://app.example.com/auth/password/reset/{key}",
+    "account_email_verify": "https://app.example.com/auth/verify-email/{key}",
+    "account_email_verification_sent": "https://app.example.com/auth/verify-email",
+}
+```

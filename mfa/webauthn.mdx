@@ -1,0 +1,481 @@
+---
+title: WebAuthn Authentication
+description: Implement FIDO2 security keys, biometric authentication, and passwordless passkey login
+---
+
+WebAuthn (Web Authentication) provides phishing-resistant authentication using:
+- **Hardware security keys** (YubiKey, Google Titan, etc.)
+- **Platform authenticators** (Touch ID, Face ID, Windows Hello)
+- **Passkeys** for passwordless authentication
+
+WebAuthn implements the FIDO2 standard and uses public-key cryptography, making it resistant to phishing, credential stuffing, and man-in-the-middle attacks.
+
+## Installation
+
+WebAuthn support requires the `fido2` package:
+
+```bash
+pip install "django-allauth[mfa]"
+```
+
+## Configuration
+
+WebAuthn is disabled by default. Enable it in `settings.py`:
+
+```python settings.py
+# Enable WebAuthn
+MFA_SUPPORTED_TYPES = ["totp", "webauthn", "recovery_codes"]
+
+# Optional: Enable passkey login (passwordless)
+MFA_PASSKEY_LOGIN_ENABLED = True
+
+# Optional: Enable passkey signup
+MFA_PASSKEY_SIGNUP_ENABLED = True
+
+# Required for default templates
+INSTALLED_APPS = [
+    # ...
+    "django.contrib.humanize",  # For displaying dates nicely
+]
+```
+
+### Development Setup
+
+For local development on `localhost`:
+
+```python settings.py
+# Only use in development - never in production!
+MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = True
+```
+
+<Warning>
+Versions of `fido2` up to 1.1.3 do not regard `localhost` as a secure origin. Set `MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = True` only for local development, never in production.
+</Warning>
+
+## URL Endpoints
+
+WebAuthn URLs are available at:
+
+- `/accounts/mfa/webauthn/add/` - Add a new WebAuthn authenticator
+- `/accounts/mfa/webauthn/` - List all WebAuthn authenticators
+- `/accounts/mfa/webauthn/<pk>/edit/` - Edit authenticator name
+- `/accounts/mfa/webauthn/<pk>/delete/` - Remove an authenticator
+- `/accounts/mfa/webauthn/login/` - Passwordless login endpoint
+- `/accounts/mfa/webauthn/signup/` - Passwordless signup endpoint
+- `/accounts/mfa/webauthn/reauthenticate/` - Reauthentication endpoint
+
+## Adding a WebAuthn Authenticator
+
+### Flow
+
+1. User navigates to `/accounts/mfa/webauthn/add/`
+2. Server generates a challenge and registration options
+3. User's browser/device prompts for authentication (fingerprint, security key, etc.)
+4. Device creates a new key pair and returns the public key
+5. Server validates and stores the public key
+
+### Template Example
+
+```html templates/mfa/webauthn/add_form.html
+{% extends "account/base.html" %}
+
+{% block content %}
+  <h1>Add Security Key</h1>
+  
+  <form method="post" id="webauthn-form">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="button" id="register-button">
+      Register Security Key
+    </button>
+  </form>
+  
+  <script>
+    const creationOptions = {{ js_data.creation_options|safe }};
+    
+    document.getElementById('register-button').addEventListener('click', async () => {
+      try {
+        // Create credential
+        const credential = await navigator.credentials.create({
+          publicKey: creationOptions
+        });
+        
+        // Set form field and submit
+        document.getElementById('id_credential').value = JSON.stringify(credential);
+        document.getElementById('webauthn-form').submit();
+      } catch (error) {
+        console.error('WebAuthn registration failed:', error);
+        alert('Failed to register security key: ' + error.message);
+      }
+    });
+  </script>
+{% endblock %}
+```
+
+## Passkey Login (Passwordless)
+
+Passkeys allow users to log in without entering a username or password.
+
+### Enable Passkey Login
+
+```python settings.py
+MFA_SUPPORTED_TYPES = ["totp", "webauthn", "recovery_codes"]
+MFA_PASSKEY_LOGIN_ENABLED = True
+```
+
+### How It Works
+
+1. User clicks "Sign in with passkey" button
+2. Browser prompts user to select a passkey
+3. User authenticates (fingerprint, face, security key)
+4. Server validates the signature and logs user in
+
+### Implementation Example
+
+```html templates/account/login.html
+<button type="button" id="passkey-login">
+  Sign in with a passkey
+</button>
+
+<script>
+async function passkeyLogin() {
+  try {
+    // Get authentication options from server
+    const response = await fetch('/accounts/mfa/webauthn/login/', {
+      headers: {'X-Requested-With': 'XMLHttpRequest'}
+    });
+    const { request_options } = await response.json();
+    
+    // Prompt for passkey
+    const credential = await navigator.credentials.get({
+      publicKey: request_options
+    });
+    
+    // Submit credential
+    const formData = new FormData();
+    formData.append('credential', JSON.stringify(credential));
+    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+    
+    await fetch('/accounts/mfa/webauthn/login/', {
+      method: 'POST',
+      body: formData
+    });
+    
+    window.location.href = '/';  // Redirect after login
+  } catch (error) {
+    console.error('Passkey login failed:', error);
+  }
+}
+
+document.getElementById('passkey-login').addEventListener('click', passkeyLogin);
+</script>
+```
+
+## Passkey Signup
+
+Users can create an account using only a passkey, no password required.
+
+### Requirements
+
+```python settings.py
+# Enable passkey signup
+MFA_PASSKEY_SIGNUP_ENABLED = True
+MFA_SUPPORTED_TYPES = ["webauthn", "recovery_codes"]
+
+# Require email verification with code
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+ACCOUNT_EMAIL_VERIFICATION_BY_CODE_ENABLED = True
+```
+
+<Note>
+Passkey signup requires email verification by code because the traditional email verification link approach needs a password, which passkey users don't have.
+</Note>
+
+## Programmatic Usage
+
+### Begin Registration
+
+```python
+from allauth.mfa.webauthn.internal.auth import begin_registration
+
+# Generate registration options
+registration_data = begin_registration(
+    user=request.user,
+    passwordless=False  # True for passkeys
+)
+
+# Returns dict with challenge, RP info, user info, etc.
+# Pass to frontend for navigator.credentials.create()
+```
+
+### Complete Registration
+
+```python
+from allauth.mfa.webauthn.internal.auth import (
+    complete_registration,
+    parse_registration_response
+)
+from allauth.mfa.webauthn.internal.auth import WebAuthn
+
+# Parse credential from frontend
+credential = parse_registration_response(request.POST.get('credential'))
+
+# Validate and get authenticator data
+authenticator_data = complete_registration(credential)
+
+# Store the authenticator
+webauthn = WebAuthn.add(
+    user=request.user,
+    name="My Security Key",
+    credential=credential
+)
+```
+
+### Begin Authentication
+
+```python
+from allauth.mfa.webauthn.internal.auth import begin_authentication
+
+# For specific user (2FA)
+request_options = begin_authentication(user=request.user)
+
+# For any user (passkey login)
+request_options = begin_authentication(user=None)
+
+# Pass to frontend for navigator.credentials.get()
+```
+
+### Complete Authentication
+
+```python
+from allauth.mfa.webauthn.internal.auth import (
+    complete_authentication,
+    extract_user_from_response,
+    parse_authentication_response
+)
+
+# For passkey login, extract user from response
+if passwordless:
+    user = extract_user_from_response(response)
+
+# Validate authentication
+authenticator = complete_authentication(user, response)
+authenticator.record_usage()
+```
+
+### List User's Authenticators
+
+```python
+from allauth.mfa.models import Authenticator
+
+authenticators = Authenticator.objects.filter(
+    user=request.user,
+    type=Authenticator.Type.WEBAUTHN
+)
+
+for auth in authenticators:
+    webauthn = auth.wrap()
+    print(f"Name: {webauthn.name}")
+    print(f"Passwordless: {webauthn.is_passwordless}")
+    print(f"Last used: {auth.last_used_at}")
+```
+
+## Customizing the Adapter
+
+Customize WebAuthn behavior by overriding the adapter:
+
+```python myapp/adapter.py
+from allauth.mfa.adapter import DefaultMFAAdapter
+
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def get_public_key_credential_rp_entity(self):
+        """Customize Relying Party information."""
+        return {
+            "id": "example.com",  # Must match your domain
+            "name": "Example Corp",
+        }
+    
+    def get_public_key_credential_user_entity(self, user):
+        """Customize user information in credentials."""
+        return {
+            "id": str(user.pk).encode('utf8'),
+            "display_name": user.get_full_name(),
+            "name": user.email,
+        }
+    
+    def generate_authenticator_name(self, user, type):
+        """Customize default authenticator names."""
+        count = Authenticator.objects.filter(
+            user=user, 
+            type=type
+        ).count()
+        return f"Security Key #{count + 1}"
+```
+
+```python settings.py
+MFA_ADAPTER = 'myapp.adapter.CustomMFAAdapter'
+```
+
+## Forms Customization
+
+Override WebAuthn forms:
+
+```python settings.py
+MFA_FORMS = {
+    'add_webauthn': 'myapp.forms.CustomAddWebAuthnForm',
+    'edit_webauthn': 'myapp.forms.CustomEditWebAuthnForm',
+}
+```
+
+### Custom Add Form
+
+```python myapp/forms.py
+from allauth.mfa.webauthn.forms import AddWebAuthnForm
+
+class CustomAddWebAuthnForm(AddWebAuthnForm):
+    def clean_name(self):
+        name = self.cleaned_data['name']
+        # Add custom validation
+        if len(name) < 3:
+            raise forms.ValidationError("Name must be at least 3 characters")
+        return name
+```
+
+## Database Model
+
+WebAuthn credentials are stored in the `Authenticator` model:
+
+```python
+class Authenticator(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    type = models.CharField(max_length=20)  # "webauthn"
+    data = models.JSONField()  # Stores credential data
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True)
+```
+
+The `data` field stores:
+
+```python
+{
+    "name": "My YubiKey",
+    "credential": {
+        "id": "...",  # Credential ID
+        "rawId": "...",
+        "response": {
+            "attestationObject": "...",
+            "clientDataJSON": "..."
+        },
+        "type": "public-key",
+        "clientExtensionResults": {
+            "credProps": {"rk": true}  # Indicates passwordless capability
+        }
+    }
+}
+```
+
+## Security Features
+
+### Phishing Resistance
+
+WebAuthn credentials are bound to your domain. They won't work on phishing sites:
+
+```python
+# Credentials only work for the registered RP ID
+rp_entity = {
+    "id": "example.com",  # Must match the current domain
+    "name": "Example"
+}
+```
+
+### User Verification
+
+For passwordless flows, require user verification (biometric/PIN):
+
+```python
+# From webauthn/internal/auth.py
+registration_data = server.register_begin(
+    user=user,
+    credentials=credentials,
+    resident_key_requirement=ResidentKeyRequirement.REQUIRED,  # For passkeys
+    user_verification=UserVerificationRequirement.REQUIRED,    # Require biometric/PIN
+)
+```
+
+### Attestation
+
+WebAuthn supports attestation to verify the authenticator's authenticity. The `fido2` library handles this automatically.
+
+## Browser Support
+
+WebAuthn is supported in:
+- Chrome/Edge 67+
+- Firefox 60+
+- Safari 13+
+- Opera 54+
+
+### Feature Detection
+
+```javascript
+if (window.PublicKeyCredential) {
+  // WebAuthn is supported
+  document.getElementById('webauthn-button').style.display = 'block';
+} else {
+  // Fall back to password/TOTP
+  console.log('WebAuthn not supported');
+}
+```
+
+## Common Issues
+
+### "Localhost not secure" Error
+
+In development, set:
+
+```python
+MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = True
+```
+
+### Credentials Not Working Across Subdomains
+
+Set the RP ID to the parent domain:
+
+```python
+class CustomMFAAdapter(DefaultMFAAdapter):
+    def get_public_key_credential_rp_entity(self):
+        return {
+            "id": "example.com",  # Works for *.example.com
+            "name": "Example"
+        }
+```
+
+### User Verification Fails
+
+Some authenticators don't support user verification. For non-passwordless flows, use:
+
+```python
+user_verification=UserVerificationRequirement.DISCOURAGED
+```
+
+## Testing
+
+WebAuthn requires HTTPS or `localhost`. For testing:
+
+1. Use `python manage.py runserver` (localhost)
+2. Or use a tool like `ngrok` for HTTPS tunneling
+3. Or configure `MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = True`
+
+### Virtual Authenticators
+
+Chrome DevTools supports virtual authenticators for testing:
+
+1. Open DevTools → More Tools → WebAuthn
+2. Enable virtual authenticator environment
+3. Add a virtual authenticator
+4. Test WebAuthn flows without physical hardware
+
+## Related
+
+- [TOTP Authentication](/mfa/totp) - Time-based codes
+- [Recovery Codes](/mfa/recovery-codes) - Backup authentication
+- [Configuration](/configuration/mfa) - All MFA settings

@@ -1,0 +1,573 @@
+---
+title: Views
+description: Class-based views for authentication, email management, and password operations
+---
+
+## LoginView
+
+Handles user login with support for multiple authentication methods.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="LoginForm">
+  Form class to use for login.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/login.html` or `.txt` based on `TEMPLATE_EXTENSION`.
+</ParamField>
+
+<ParamField path="success_url" type="str" optional>
+  URL to redirect after successful login.
+</ParamField>
+
+### Decorators
+
+- `@rate_limit(action="login")` - Rate limits login attempts
+- `@login_not_required` - Allows anonymous access
+- `@sensitive_post_parameters` - Protects password in error reports
+- `@never_cache` - Prevents caching
+
+### Methods
+
+#### get_form_class()
+
+Returns the form class, respecting `FORMS` setting.
+
+#### form_valid(form)
+
+Handles successful form submission.
+
+<ParamField path="form" type="LoginForm">
+  The validated form.
+</ParamField>
+
+<ResponseField name="return" type="HttpResponse">
+  Response object (typically redirect).
+</ResponseField>
+
+### Context Data
+
+<ResponseField name="signup_url" type="str">
+  URL to signup page.
+</ResponseField>
+
+<ResponseField name="site" type="Site">
+  Current site object.
+</ResponseField>
+
+<ResponseField name="SOCIALACCOUNT_ENABLED" type="bool">
+  Whether social authentication is enabled.
+</ResponseField>
+
+<ResponseField name="LOGIN_BY_CODE_ENABLED" type="bool">
+  Whether passwordless login is enabled.
+</ResponseField>
+
+<ResponseField name="PASSKEY_LOGIN_ENABLED" type="bool">
+  Whether passkey login is enabled.
+</ResponseField>
+
+### Usage
+
+```python
+# urls.py
+from allauth.account.views import LoginView
+
+urlpatterns = [
+    path('login/', LoginView.as_view(), name='account_login'),
+]
+```
+
+---
+
+## SignupView
+
+Handles user registration.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="SignupForm">
+  Form class to use for signup.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/signup.html` or `.txt`.
+</ParamField>
+
+### Decorators
+
+- `@rate_limit(action="signup")` - Rate limits signup attempts
+- `@login_not_required` - Allows anonymous access
+- `@sensitive_post_parameters` - Protects password in error reports
+- `@never_cache` - Prevents caching
+
+### Methods
+
+#### get_form_class()
+
+Returns form class from settings or default.
+
+#### form_valid(form)
+
+Creates user and completes signup flow.
+
+#### get_initial()
+
+Pre-fills email from query parameter if provided.
+
+### Context Data
+
+<ResponseField name="login_url" type="str">
+  URL to login page.
+</ResponseField>
+
+<ResponseField name="signup_url" type="str">
+  Current signup URL.
+</ResponseField>
+
+<ResponseField name="PASSKEY_SIGNUP_ENABLED" type="bool">
+  Whether passkey signup is enabled.
+</ResponseField>
+
+---
+
+## ConfirmEmailView
+
+Handles email confirmation via confirmation key.
+
+### Attributes
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/email_confirm.html`.
+</ParamField>
+
+### URL Parameters
+
+<ParamField path="key" type="str">
+  Email confirmation key from URL.
+</ParamField>
+
+### Methods
+
+#### get_object()
+
+Retrieves EmailConfirmation from key.
+
+<ResponseField name="return" type="EmailConfirmation">
+  The confirmation object.
+</ResponseField>
+
+#### logout_other_user(confirmation)
+
+Logs out current user if confirming for different account.
+
+<ParamField path="confirmation" type="EmailConfirmation">
+  The confirmation being processed.
+</ParamField>
+
+### Context Data
+
+<ResponseField name="confirmation" type="EmailConfirmation">
+  The confirmation object.
+</ResponseField>
+
+<ResponseField name="can_confirm" type="bool">
+  Whether confirmation can proceed.
+</ResponseField>
+
+<ResponseField name="email" type="str">
+  Email address being confirmed.
+</ResponseField>
+
+---
+
+## EmailView
+
+Manages user's email addresses.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="AddEmailForm">
+  Form for adding email addresses.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Uses `account/email.html` or `account/email_change.html` based on `CHANGE_EMAIL` setting.
+</ParamField>
+
+<ParamField path="success_url" type="str" default="reverse_lazy('account_email')">
+  Redirect URL after actions.
+</ParamField>
+
+### Decorators
+
+- `@login_required` - Requires authenticated user
+- `@rate_limit(action="manage_email")` - Rate limits email operations
+
+### POST Actions
+
+<ParamField path="action_add" type="submit">
+  Adds new email address.
+</ParamField>
+
+<ParamField path="action_send" type="submit">
+  Resends verification email.
+</ParamField>
+
+<ParamField path="action_remove" type="submit">
+  Removes email address.
+</ParamField>
+
+<ParamField path="action_primary" type="submit">
+  Sets email as primary.
+</ParamField>
+
+### Context Data
+
+<ResponseField name="emailaddresses" type="QuerySet">
+  List of user's email addresses.
+</ResponseField>
+
+<ResponseField name="can_add_email" type="bool">
+  Whether user can add more emails.
+</ResponseField>
+
+<ResponseField name="new_emailaddress" type="EmailAddress">
+  Pending new email (CHANGE_EMAIL mode).
+</ResponseField>
+
+<ResponseField name="current_emailaddress" type="EmailAddress">
+  Current verified email (CHANGE_EMAIL mode).
+</ResponseField>
+
+---
+
+## PasswordChangeView
+
+Handles password change for users with existing password.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="ChangePasswordForm">
+  Form for changing password.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/password_change.html`.
+</ParamField>
+
+### Decorators
+
+- `@login_required` - Requires authenticated user
+- `@rate_limit(action="change_password")` - Rate limits password changes
+- `@sensitive_post_parameters` - Protects passwords in error reports
+
+### Methods
+
+#### dispatch(request, *args, **kwargs)
+
+Redirects to PasswordSetView if user has no usable password.
+
+#### get_default_success_url()
+
+Returns redirect URL from adapter.
+
+---
+
+## PasswordSetView
+
+Handles password creation for users without existing password.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="SetPasswordForm">
+  Form for setting password.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/password_set.html`.
+</ParamField>
+
+### Decorators
+
+- `@login_required` - Requires authenticated user
+- `@rate_limit(action="change_password")` - Rate limits password operations
+- `@sensitive_post_parameters` - Protects passwords
+
+---
+
+## PasswordResetView
+
+Handles password reset request.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="ResetPasswordForm">
+  Form for requesting password reset.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/password_reset.html`.
+</ParamField>
+
+<ParamField path="success_url" type="str" default="reverse_lazy('account_reset_password_done')">
+  Redirect URL after request.
+</ParamField>
+
+### Decorators
+
+- `@login_not_required` - Allows anonymous access
+
+### Methods
+
+#### form_valid(form)
+
+Sends password reset email with rate limiting.
+
+---
+
+## PasswordResetFromKeyView
+
+Handles password reset with key/token.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="ResetPasswordKeyForm">
+  Form for resetting password.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/password_reset_from_key.html`.
+</ParamField>
+
+<ParamField path="success_url" type="str" default="reverse_lazy('account_reset_password_from_key_done')">
+  Success redirect URL.
+</ParamField>
+
+<ParamField path="reset_url_key" type="str" default="set-password">
+  URL key for reset action.
+</ParamField>
+
+### URL Parameters
+
+<ParamField path="uidb36" type="str">
+  Base36-encoded user ID.
+</ParamField>
+
+<ParamField path="key" type="str">
+  Password reset token.
+</ParamField>
+
+### Decorators
+
+- `@rate_limit(action="reset_password_from_key")` - Rate limits reset attempts
+- `@login_not_required` - Allows anonymous access
+
+---
+
+## LogoutView
+
+Handles user logout.
+
+### Attributes
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/logout.html`.
+</ParamField>
+
+### Methods
+
+#### get(request)
+
+Handles GET requests. Logs out immediately if `LOGOUT_ON_GET` is True.
+
+#### post(request)
+
+Handles logout confirmation.
+
+#### get_redirect_url()
+
+Returns logout redirect URL from adapter.
+
+---
+
+## ReauthenticateView
+
+Requires user to confirm their password.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="ReauthenticateForm">
+  Form for reauthentication.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/reauthenticate.html`.
+</ParamField>
+
+### Decorators
+
+- `@login_required` - Requires authenticated user
+- Rate limited via `_check_ratelimit` method
+
+### Context Data
+
+<ResponseField name="reauthentication_alternatives" type="list">
+  Alternative reauthentication methods (e.g., TOTP, WebAuthn).
+</ResponseField>
+
+---
+
+## RequestLoginCodeView
+
+Requests a login code for passwordless authentication.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="RequestLoginCodeForm">
+  Form for requesting code.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/request_login_code.html`.
+</ParamField>
+
+### Methods
+
+#### form_valid(form)
+
+Initiates login code verification process.
+
+---
+
+## ConfirmLoginCodeView
+
+Verifies login code for passwordless authentication.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="ConfirmLoginCodeForm">
+  Form for code verification.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/confirm_login_code.html`.
+</ParamField>
+
+### Decorators
+
+- `@login_stage_required` - Requires active login stage
+- `@never_cache` - Prevents caching
+
+### Context Data
+
+<ResponseField name="email" type="str">
+  Email where code was sent.
+</ResponseField>
+
+<ResponseField name="phone" type="str">
+  Phone where code was sent.
+</ResponseField>
+
+---
+
+## ChangePhoneView
+
+Handles phone number changes.
+
+### Attributes
+
+<ParamField path="form_class" type="type" default="ChangePhoneForm">
+  Form for changing phone.
+</ParamField>
+
+<ParamField path="template_name" type="str">
+  Template path. Defaults to `account/phone_change.html`.
+</ParamField>
+
+<ParamField path="success_url" type="str" default="reverse_lazy('account_verify_phone')">
+  Redirect to phone verification.
+</ParamField>
+
+### Decorators
+
+- `@login_required` - Requires authenticated user
+- `@rate_limit(action="change_phone")` - Rate limits phone changes
+
+### Context Data
+
+<ResponseField name="phone" type="str">
+  Current phone number.
+</ResponseField>
+
+<ResponseField name="phone_verified" type="bool">
+  Whether phone is verified.
+</ResponseField>
+
+---
+
+## Function-Based View Shortcuts
+
+These are convenience references to class-based views:
+
+```python
+login = LoginView.as_view()
+signup = SignupView.as_view()
+confirm_email = ConfirmEmailView.as_view()
+email = EmailView.as_view()
+password_change = PasswordChangeView.as_view()
+password_set = PasswordSetView.as_view()
+password_reset = PasswordResetView.as_view()
+password_reset_from_key = PasswordResetFromKeyView.as_view()
+logout = LogoutView.as_view()
+reauthenticate = ReauthenticateView.as_view()
+request_login_code = RequestLoginCodeView.as_view()
+confirm_login_code = ConfirmLoginCodeView.as_view()
+change_phone = ChangePhoneView.as_view()
+```
+
+## Usage Examples
+
+### Custom Login View
+
+```python
+from allauth.account.views import LoginView
+from .forms import CustomLoginForm
+
+class MyLoginView(LoginView):
+    form_class = CustomLoginForm
+    template_name = 'myapp/login.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['custom_data'] = 'value'
+        return context
+```
+
+### Overriding Success URL
+
+```python
+from allauth.account.views import SignupView
+from django.urls import reverse_lazy
+
+class MySignupView(SignupView):
+    success_url = reverse_lazy('welcome')
+```
+
+### URL Configuration
+
+```python
+from django.urls import path, include
+from allauth.account import views
+
+urlpatterns = [
+    path('accounts/login/', views.login, name='account_login'),
+    path('accounts/signup/', views.signup, name='account_signup'),
+    path('accounts/logout/', views.logout, name='account_logout'),
+    path('accounts/password/change/', views.password_change, name='account_change_password'),
+    path('accounts/email/', views.email, name='account_email'),
+    # Or use the default URLs:
+    path('accounts/', include('allauth.urls')),
+]
+```

@@ -1,0 +1,736 @@
+---
+title: Adapters
+description: Customize django-allauth behavior using adapter classes
+---
+
+Adapters in django-allauth provide a powerful way to customize the authentication flow without modifying the core library. They allow you to override specific behaviors such as user creation, email sending, password validation, and more.
+
+## Overview
+
+django-allauth uses the adapter pattern to provide customization points throughout the authentication process. There are two main adapter classes:
+
+- **`DefaultAccountAdapter`** - Handles account-related functionality (`allauth/account/adapter.py:52`)
+- **`DefaultSocialAccountAdapter`** - Handles social authentication functionality (`allauth/socialaccount/adapter.py:20`)
+
+## Account Adapter
+
+### Configuration
+
+To use a custom account adapter, set `ACCOUNT_ADAPTER` in your settings:
+
+```python
+# settings.py
+ACCOUNT_ADAPTER = "myproject.adapters.MyAccountAdapter"
+```
+
+### Creating a Custom Adapter
+
+Create your adapter by subclassing `DefaultAccountAdapter`:
+
+```python
+# myproject/adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def get_login_redirect_url(self, request):
+        """
+        Customize where users are redirected after login.
+        """
+        if request.user.is_staff:
+            return "/admin/"
+        return "/dashboard/"
+```
+
+## Key Adapter Methods
+
+### User Management
+
+#### new_user(request)
+
+**Source:** `allauth/account/adapter.py:290`
+
+Instantiates a new User instance.
+
+```python
+from django.contrib.auth import get_user_model
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def new_user(self, request):
+        user = super().new_user(request)
+        user.is_active = False  # Require admin approval
+        return user
+```
+
+#### save_user(request, user, form, commit=True)
+
+**Source:** `allauth/account/adapter.py:321`
+
+Saves a new User instance using information provided in the signup form.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def save_user(self, request, user, form, commit=True):
+        user = super().save_user(request, user, form, commit=False)
+        # Add custom fields
+        user.company = form.cleaned_data.get('company')
+        if commit:
+            user.save()
+        return user
+```
+
+#### populate_username(request, user)
+
+**Source:** `allauth/account/adapter.py:297`
+
+Fills in a valid username, if required and missing.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def populate_username(self, request, user):
+        from allauth.account.utils import user_email, user_username
+        
+        # Use email prefix as username
+        email = user_email(user)
+        if email:
+            username = email.split('@')[0]
+            user_username(user, username)
+        else:
+            super().populate_username(request, user)
+```
+
+### Validation Methods
+
+#### clean_username(username, shallow=False)
+
+**Source:** `allauth/account/adapter.py:360`
+
+Validates the username. Hook into this to restrict what usernames can be chosen.
+
+```python
+import re
+from django.core.exceptions import ValidationError
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def clean_username(self, username, shallow=False):
+        # Only allow alphanumeric usernames
+        if not re.match(r'^[a-zA-Z0-9]+$', username):
+            raise ValidationError(
+                "Username can only contain letters and numbers."
+            )
+        return super().clean_username(username, shallow)
+```
+
+#### clean_email(email)
+
+**Source:** `allauth/account/adapter.py:383`
+
+Validates an email value. Hook into this to restrict what email addresses can be chosen.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def clean_email(self, email):
+        # Only allow company email addresses
+        if not email.endswith('@mycompany.com'):
+            raise ValidationError(
+                "Please use your company email address."
+            )
+        return super().clean_email(email)
+```
+
+#### clean_password(password, user=None)
+
+**Source:** `allauth/account/adapter.py:390`
+
+Validates a password. Hook into this to restrict allowed password choices.
+
+```python
+from django.core.exceptions import ValidationError
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def clean_password(self, password, user=None):
+        # Check for common weak passwords
+        weak_passwords = ['password123', 'qwerty', '123456']
+        if password.lower() in weak_passwords:
+            raise ValidationError(
+                "This password is too common. Please choose a stronger one."
+            )
+        return super().clean_password(password, user)
+```
+
+### Signup Control
+
+#### is_open_for_signup(request)
+
+**Source:** `allauth/account/adapter.py:281`
+
+Checks whether or not the site is open for signups.
+
+```python
+from django.shortcuts import redirect
+from allauth.exceptions import ImmediateHttpResponse
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def is_open_for_signup(self, request):
+        # Only allow signup with invitation code
+        if not request.session.get('invitation_code'):
+            response = redirect('/invitation-required/')
+            raise ImmediateHttpResponse(response)
+        return True
+```
+
+### Email Handling
+
+#### send_mail(template_prefix, email, context)
+
+**Source:** `allauth/account/adapter.py:212`
+
+Sends an email message.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def send_mail(self, template_prefix, email, context):
+        # Log all emails sent
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Sending {template_prefix} email to {email}")
+        
+        super().send_mail(template_prefix, email, context)
+```
+
+#### format_email_subject(subject)
+
+**Source:** `allauth/account/adapter.py:155`
+
+Formats the email subject.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def format_email_subject(self, subject):
+        return f"[MyApp] {subject}"
+```
+
+#### get_from_email()
+
+**Source:** `allauth/account/adapter.py:165`
+
+Returns the 'from' email address for sending emails.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def get_from_email(self):
+        return "noreply@mycompany.com"
+```
+
+#### render_mail(template_prefix, email, context, headers=None)
+
+**Source:** `allauth/account/adapter.py:172`
+
+Renders an email message.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def render_mail(self, template_prefix, email, context, headers=None):
+        # Add custom headers
+        if headers is None:
+            headers = {}
+        headers['X-App-Name'] = 'MyApp'
+        return super().render_mail(template_prefix, email, context, headers)
+```
+
+### Authentication
+
+#### authenticate(request, **credentials)
+
+**Source:** `allauth/account/adapter.py:731`
+
+Authenticates a user. Handles rate limiting.
+
+```python
+import logging
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def authenticate(self, request, **credentials):
+        logger = logging.getLogger(__name__)
+        logger.info(f"Authentication attempt for {credentials.get('email')}")
+        return super().authenticate(request, **credentials)
+```
+
+#### pre_authenticate(request, **credentials)
+
+**Source:** `allauth/account/adapter.py:720`
+
+Called before authentication. Can be used for rate limiting or other checks.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def pre_authenticate(self, request, **credentials):
+        # Custom rate limiting logic
+        super().pre_authenticate(request, **credentials)
+```
+
+#### authentication_failed(request, **credentials)
+
+**Source:** `allauth/account/adapter.py:751`
+
+Called when authentication fails.
+
+```python
+import logging
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def authentication_failed(self, request, **credentials):
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"Failed login attempt for {credentials.get('email')} "
+            f"from IP {self.get_client_ip(request)}"
+        )
+```
+
+### Login and Logout
+
+#### pre_login(request, user, *, email_verification, signal_kwargs, email, signup, redirect_url)
+
+**Source:** `allauth/account/adapter.py:491`
+
+Called just before logging in the user.
+
+```python
+from django.http import HttpResponseRedirect
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def pre_login(self, request, user, **kwargs):
+        # Check if user account is approved
+        if not user.is_active:
+            return self.respond_user_inactive(request, user)
+        
+        # Check subscription status
+        if not user.has_active_subscription:
+            return HttpResponseRedirect('/subscribe/')
+```
+
+#### post_login(request, user, *, email_verification, signal_kwargs, email, signup, redirect_url)
+
+**Source:** `allauth/account/adapter.py:505`
+
+Called right after logging in the user.
+
+```python
+import logging
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def post_login(self, request, user, **kwargs):
+        logger = logging.getLogger(__name__)
+        logger.info(f"User {user.username} logged in")
+        
+        # Update last login timestamp
+        user.last_login_ip = self.get_client_ip(request)
+        user.save(update_fields=['last_login_ip'])
+        
+        return super().post_login(request, user, **kwargs)
+```
+
+#### login(request, user)
+
+**Source:** `allauth/account/adapter.py:544`
+
+Performs the login.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def login(self, request, user):
+        # Custom login logic
+        super().login(request, user)
+        
+        # Set custom session variables
+        request.session['user_role'] = user.role
+```
+
+#### logout(request)
+
+**Source:** `allauth/account/adapter.py:564`
+
+Performs the logout.
+
+```python
+import logging
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def logout(self, request):
+        logger = logging.getLogger(__name__)
+        logger.info(f"User {request.user.username} logged out")
+        
+        super().logout(request)
+```
+
+### Redirect URLs
+
+#### get_login_redirect_url(request)
+
+**Source:** `allauth/account/adapter.py:229`
+
+Returns the default URL to redirect to after logging in.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def get_login_redirect_url(self, request):
+        if request.user.is_staff:
+            return "/admin/dashboard/"
+        elif request.user.is_premium:
+            return "/premium/dashboard/"
+        return "/dashboard/"
+```
+
+#### get_logout_redirect_url(request)
+
+**Source:** `allauth/account/adapter.py:247`
+
+Returns the URL to redirect to after logout.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def get_logout_redirect_url(self, request):
+        return "/goodbye/"
+```
+
+#### get_signup_redirect_url(request)
+
+**Source:** `allauth/account/adapter.py:223`
+
+Returns the default URL to redirect to after signing up.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def get_signup_redirect_url(self, request):
+        return "/welcome/"
+```
+
+#### get_email_verification_redirect_url(email_address)
+
+**Source:** `allauth/account/adapter.py:256`
+
+The URL to return to after email verification.
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    def get_email_verification_redirect_url(self, email_address):
+        if self.request.user.is_authenticated:
+            return "/profile/"
+        return "/login/"
+```
+
+### Messages
+
+#### add_message(request, level, message_template=None, message_context=None, extra_tags="", message=None)
+
+**Source:** `allauth/account/adapter.py:411`
+
+Wrapper of `django.contrib.messages.add_message`.
+
+```python
+from django.contrib import messages
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def add_message(self, request, level, message_template=None, 
+                   message_context=None, extra_tags="", message=None):
+        # Add custom styling tags
+        if level == messages.SUCCESS:
+            extra_tags += " success-message"
+        
+        super().add_message(
+            request, level, message_template, 
+            message_context, extra_tags, message
+        )
+```
+
+## Social Account Adapter
+
+### Configuration
+
+To use a custom social account adapter:
+
+```python
+# settings.py
+SOCIALACCOUNT_ADAPTER = "myproject.adapters.MySocialAccountAdapter"
+```
+
+### Creating a Custom Social Adapter
+
+```python
+# myproject/adapters.py
+from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def pre_social_login(self, request, sociallogin):
+        """
+        Called just after a user successfully authenticates via a social provider,
+        but before the login is processed.
+        """
+        # Link social account to existing user if emails match
+        if sociallogin.is_existing:
+            return
+        
+        if sociallogin.email_addresses:
+            email = sociallogin.email_addresses[0].email
+            try:
+                user = User.objects.get(email=email)
+                sociallogin.connect(request, user)
+            except User.DoesNotExist:
+                pass
+```
+
+### Key Social Adapter Methods
+
+#### pre_social_login(request, sociallogin)
+
+**Source:** `allauth/socialaccount/adapter.py:45`
+
+Invoked just after a user successfully authenticates via a social provider.
+
+```python
+from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+from allauth.exceptions import ImmediateHttpResponse
+from django.shortcuts import redirect
+
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def pre_social_login(self, request, sociallogin):
+        # Require users to accept terms before social login
+        if not request.session.get('terms_accepted'):
+            request.session['pending_social_login'] = sociallogin.serialize()
+            response = redirect('/terms/')
+            raise ImmediateHttpResponse(response)
+```
+
+#### on_authentication_error(request, provider, error=None, exception=None, extra_context=None)
+
+**Source:** `allauth/socialaccount/adapter.py:60`
+
+Invoked when there is an error in the authentication cycle.
+
+```python
+import logging
+
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def on_authentication_error(self, request, provider, error=None, 
+                               exception=None, extra_context=None):
+        logger = logging.getLogger(__name__)
+        logger.error(
+            f"Social auth error for {provider.id}: {error}",
+            exc_info=exception
+        )
+```
+
+#### new_user(request, sociallogin)
+
+**Source:** `allauth/socialaccount/adapter.py:88`
+
+Instantiates a new User instance.
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def new_user(self, request, sociallogin):
+        user = super().new_user(request, sociallogin)
+        # Set default role for social users
+        user.role = 'social_user'
+        return user
+```
+
+#### save_user(request, sociallogin, form=None)
+
+**Source:** `allauth/socialaccount/adapter.py:94`
+
+Saves a newly signed up social login.
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def save_user(self, request, sociallogin, form=None):
+        user = super().save_user(request, sociallogin, form)
+        # Mark user as verified since they used social auth
+        user.is_verified = True
+        user.save()
+        return user
+```
+
+#### populate_user(request, sociallogin, data)
+
+**Source:** `allauth/socialaccount/adapter.py:109`
+
+Hook to further populate the user instance.
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def populate_user(self, request, sociallogin, data):
+        user = super().populate_user(request, sociallogin, data)
+        # Extract additional fields from social provider
+        user.bio = data.get('bio', '')
+        user.location = data.get('location', '')
+        return user
+```
+
+#### is_open_for_signup(request, sociallogin)
+
+**Source:** `allauth/socialaccount/adapter.py:156`
+
+Checks whether or not the site is open for signups via social accounts.
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def is_open_for_signup(self, request, sociallogin):
+        # Only allow signups from specific providers
+        allowed_providers = ['google', 'github']
+        if sociallogin.account.provider not in allowed_providers:
+            return False
+        return super().is_open_for_signup(request, sociallogin)
+```
+
+#### is_auto_signup_allowed(request, sociallogin)
+
+**Source:** `allauth/socialaccount/adapter.py:151`
+
+Determines if automatic signup is allowed.
+
+```python
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    def is_auto_signup_allowed(self, request, sociallogin):
+        # Require manual signup form for certain providers
+        if sociallogin.account.provider == 'facebook':
+            return False
+        return super().is_auto_signup_allowed(request, sociallogin)
+```
+
+## Complete Example
+
+Here's a comprehensive example combining multiple customizations:
+
+```python
+# myproject/adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+from django.core.exceptions import ValidationError
+from django.shortcuts import redirect
+from allauth.exceptions import ImmediateHttpResponse
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    
+    def is_open_for_signup(self, request):
+        """Only allow signup with valid invitation code."""
+        invitation_code = request.session.get('invitation_code')
+        if not invitation_code:
+            response = redirect('/invitation-required/')
+            raise ImmediateHttpResponse(response)
+        return True
+    
+    def clean_email(self, email):
+        """Only allow company email addresses."""
+        if not email.endswith('@mycompany.com'):
+            raise ValidationError(
+                "Please use your company email address."
+            )
+        return super().clean_email(email)
+    
+    def save_user(self, request, user, form, commit=True):
+        """Add custom fields from signup form."""
+        user = super().save_user(request, user, form, commit=False)
+        user.department = form.cleaned_data.get('department')
+        user.employee_id = form.cleaned_data.get('employee_id')
+        if commit:
+            user.save()
+        return user
+    
+    def get_login_redirect_url(self, request):
+        """Redirect based on user role."""
+        user = request.user
+        if user.is_staff:
+            return "/admin/dashboard/"
+        elif user.department == 'sales':
+            return "/sales/dashboard/"
+        return "/dashboard/"
+    
+    def post_login(self, request, user, **kwargs):
+        """Log login and update last login IP."""
+        logger.info(f"User {user.username} logged in from {self.get_client_ip(request)}")
+        user.last_login_ip = self.get_client_ip(request)
+        user.save(update_fields=['last_login_ip'])
+        return super().post_login(request, user, **kwargs)
+    
+    def send_mail(self, template_prefix, email, context):
+        """Log all emails sent."""
+        logger.info(f"Sending {template_prefix} email to {email}")
+        super().send_mail(template_prefix, email, context)
+
+
+class MySocialAccountAdapter(DefaultSocialAccountAdapter):
+    
+    def pre_social_login(self, request, sociallogin):
+        """Link social accounts to existing users by email."""
+        if sociallogin.is_existing:
+            return
+        
+        if sociallogin.email_addresses:
+            email = sociallogin.email_addresses[0].email
+            try:
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                user = User.objects.get(email=email)
+                sociallogin.connect(request, user)
+                logger.info(
+                    f"Linked {sociallogin.account.provider} account to "
+                    f"existing user {user.username}"
+                )
+            except User.DoesNotExist:
+                pass
+    
+    def is_open_for_signup(self, request, sociallogin):
+        """Only allow specific social providers."""
+        allowed_providers = ['google', 'github', 'microsoft']
+        if sociallogin.account.provider not in allowed_providers:
+            return False
+        return super().is_open_for_signup(request, sociallogin)
+    
+    def populate_user(self, request, sociallogin, data):
+        """Extract additional data from social provider."""
+        user = super().populate_user(request, sociallogin, data)
+        # Mark social users as pre-verified
+        user.is_verified = True
+        return user
+```
+
+```python
+# settings.py
+ACCOUNT_ADAPTER = "myproject.adapters.MyAccountAdapter"
+SOCIALACCOUNT_ADAPTER = "myproject.adapters.MySocialAccountAdapter"
+```
+
+## Error Messages
+
+You can customize error messages by overriding the `error_messages` dictionary:
+
+```python
+class MyAccountAdapter(DefaultAccountAdapter):
+    error_messages = dict(
+        DefaultAccountAdapter.error_messages,
+        username_taken="That username is already taken. Please try another.",
+        email_taken="An account with this email already exists.",
+        too_many_login_attempts="Too many failed attempts. Please try again in 5 minutes.",
+    )
+```
+
+Available error message keys are defined in `allauth/account/adapter.py:60`.
+
+## Best Practices
+
+1. **Always call super()** - Unless you're completely replacing functionality, call the parent method
+2. **Use logging** - Log important events for debugging and security auditing
+3. **Handle exceptions** - Wrap custom logic in try/except blocks
+4. **Test thoroughly** - Adapter methods are called during critical authentication flows
+5. **Keep it focused** - Each method should have a single responsibility
+6. **Document customizations** - Comment why custom logic is needed
+
+## Related
+
+- [Settings](/configuration/settings) - Configure adapter behavior
+- [Forms](/configuration/forms) - Customize form handling
+- [Templates](/configuration/templates) - Customize the UI

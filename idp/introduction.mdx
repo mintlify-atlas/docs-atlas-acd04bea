@@ -1,0 +1,166 @@
+---
+title: Identity Provider Overview
+description: Turn your Django app into an OpenID Connect identity provider with django-allauth
+---
+
+## What is an Identity Provider?
+
+An identity provider (IdP) is a service that authenticates users and provides their identity information to other applications. With django-allauth's IDP functionality, you can turn your Django application into a fully-featured identity provider that other applications can use for authentication.
+
+## Supported Protocols
+
+Currently, django-allauth supports OpenID Connect (OIDC) as an identity provider protocol. This allows your Django application to:
+
+- Authenticate users for third-party applications
+- Issue access tokens and refresh tokens
+- Provide user profile information via standard OIDC claims
+- Support multiple OAuth 2.0 grant types
+
+<Note>
+  SAML identity provider functionality is not currently available in django-allauth. The SAML support is only for consuming external SAML identity providers, not acting as one.
+</Note>
+
+## Use Cases
+
+The identity provider functionality is ideal for scenarios where you want to:
+
+- **Centralize Authentication**: Use your Django app as the single source of truth for user authentication across multiple applications
+- **Build SaaS Platforms**: Provide SSO (Single Sign-On) capabilities to your customers
+- **Internal Tools**: Enable employees to access multiple internal applications with a single set of credentials
+- **API Access Control**: Issue tokens to control access to your APIs
+- **Mobile & Desktop Apps**: Authenticate users in native applications using standard OAuth 2.0 flows
+
+## Key Features
+
+### Multiple Grant Types
+
+django-allauth IDP supports all modern OAuth 2.0 grant types:
+
+- **Authorization Code Grant**: The most secure flow for web applications
+- **Client Credentials Grant**: For server-to-server authentication
+- **Implicit Grant**: For single-page applications (legacy)
+- **Device Authorization Grant**: For devices with limited input capabilities
+- **Refresh Token Grant**: For obtaining new access tokens without re-authentication
+
+### Flexible Token Management
+
+The IDP provides fine-grained control over tokens:
+
+- Configurable token expiration times
+- Support for both opaque and JWT access tokens
+- Automatic token rotation for enhanced security
+- Token revocation capabilities
+
+### Scope-Based Authorization
+
+Control what information and permissions clients can access:
+
+- Standard OIDC scopes (`openid`, `profile`, `email`)
+- Custom scopes for your application's specific needs
+- Per-client scope restrictions
+- Consent management
+
+### Client Management
+
+Manage OAuth clients through the Django admin interface:
+
+- Automatic client ID and secret generation
+- Support for both confidential and public clients
+- Configurable redirect URIs and CORS origins
+- Wildcard support for dynamic preview deployments
+- Skip consent option for trusted applications
+
+### Standards Compliance
+
+The implementation follows industry standards:
+
+- OpenID Connect Core 1.0
+- OAuth 2.0 Authorization Framework (RFC 6749)
+- Device Authorization Grant (RFC 8628)
+- Token Revocation (RFC 7009)
+- Discovery metadata (`.well-known/openid-configuration`)
+- JSON Web Key Sets (JWKS)
+
+## How It Works
+
+When you configure your Django app as an identity provider:
+
+1. **Client Registration**: Third-party applications register as OAuth clients in your Django admin
+2. **Authorization Request**: When a user tries to access a client application, they're redirected to your Django app
+3. **User Authentication**: The user logs in using django-allauth's account system
+4. **Consent**: The user grants permission for the client to access their information (unless consent is skipped)
+5. **Token Issuance**: Your app issues an authorization code, which the client exchanges for access and ID tokens
+6. **API Access**: The client uses the access token to make authenticated requests
+7. **Token Refresh**: When the access token expires, the client uses the refresh token to obtain a new one
+
+## Architecture
+
+The IDP functionality integrates seamlessly with django-allauth:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Your Django App                       │
+│                                                          │
+│  ┌────────────────┐         ┌──────────────────────┐   │
+│  │  allauth.      │         │   allauth.idp.oidc   │   │
+│  │  account       │◄────────┤   (IDP Provider)     │   │
+│  │  (User Auth)   │         │                      │   │
+│  └────────────────┘         └──────────┬───────────┘   │
+│                                        │               │
+│                                        │ Issues Tokens │
+└────────────────────────────────────────┼───────────────┘
+                                         │
+                                         ▼
+                            ┌─────────────────────────┐
+                            │   Client Applications   │
+                            │  (Web, Mobile, etc.)    │
+                            └─────────────────────────┘
+```
+
+## Getting Started
+
+To get started with the identity provider functionality:
+
+1. Install the required dependencies
+2. Configure your Django settings
+3. Set up URL routing
+4. Generate and configure a private key
+5. Create OAuth clients
+6. Customize the adapter (optional)
+
+For detailed setup instructions, see the [OpenID Connect](/idp/openid-connect) guide.
+
+## Customization
+
+The IDP is highly customizable through the adapter pattern:
+
+- Override token generation logic
+- Customize claim mapping
+- Add custom user attributes
+- Implement custom authorization logic
+- Modify token expiration behavior
+
+All customization is done through a clean, documented adapter interface that allows you to override specific methods while keeping the rest of the implementation intact.
+
+## Security Considerations
+
+<Warning>
+  When running an identity provider, security is critical. Always:
+  - Use HTTPS in production
+  - Keep your private keys secure and never commit them to version control
+  - Regularly rotate tokens and keys
+  - Implement proper CORS and redirect URI validation
+  - Monitor for suspicious activity
+  - Keep django-allauth updated
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="OpenID Connect Setup" icon="key" href="/idp/openid-connect">
+    Learn how to configure your Django app as an OpenID Connect provider
+  </Card>
+  <Card title="Configuration Reference" icon="sliders" href="/idp/openid-connect#configuration">
+    Explore all available settings and customization options
+  </Card>
+</CardGroup>

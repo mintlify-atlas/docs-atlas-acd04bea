@@ -1,0 +1,754 @@
+---
+title: Forms
+description: Customize django-allauth forms for signup, login, and account management
+---
+
+django-allauth provides extensive form customization options. You can override built-in forms to add custom fields, modify validation logic, or change form behavior.
+
+## Overview
+
+Forms in django-allauth handle:
+- User signup and login
+- Password management (change, reset, set)
+- Email address management
+- Login codes and verification codes
+- Social account connections
+
+All forms can be customized by overriding them in your settings.
+
+## Configuration
+
+Override forms using the `ACCOUNT_FORMS` setting:
+
+```python
+# settings.py
+ACCOUNT_FORMS = {
+    'login': 'myproject.forms.MyLoginForm',
+    'signup': 'myproject.forms.MySignupForm',
+    'add_email': 'myproject.forms.MyAddEmailForm',
+    'change_password': 'myproject.forms.MyChangePasswordForm',
+    'reset_password': 'myproject.forms.MyResetPasswordForm',
+    'reset_password_from_key': 'myproject.forms.MyResetPasswordKeyForm',
+    'set_password': 'myproject.forms.MySetPasswordForm',
+}
+```
+
+**Source:** `allauth/account/app_settings.py:464`
+
+## Login Form
+
+### Default Form
+
+**Path:** `allauth.account.forms.LoginForm`  
+**Used on:** Login view (`account_login`)
+
+### Customization
+
+```python
+# myproject/forms.py
+from allauth.account.forms import LoginForm
+from django import forms
+
+class MyLoginForm(LoginForm):
+    remember = forms.BooleanField(
+        required=False,
+        initial=True,  # Remember by default
+        label="Keep me signed in"
+    )
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Customize field attributes
+        self.fields['login'].widget.attrs.update({
+            'class': 'form-control',
+            'placeholder': 'Email address',
+            'autofocus': True
+        })
+        self.fields['password'].widget.attrs.update({
+            'class': 'form-control',
+            'placeholder': 'Password'
+        })
+    
+    def login(self, request, redirect_url=None):
+        # Add custom logic before login
+        user = self.user
+        
+        # Log login attempt
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"User {user.username} logging in")
+        
+        # Call parent login method
+        return super().login(request, redirect_url)
+```
+
+```python
+# settings.py
+ACCOUNT_FORMS = {
+    'login': 'myproject.forms.MyLoginForm',
+}
+```
+
+### Available Attributes
+
+- `self.user` - The User object that is logging in
+
+### Password Help Text
+
+Customize the "Forgot your password?" link by providing a template:
+
+```django
+{# templates/account/password_reset_help_text.html #}
+<a href="{% url 'account_reset_password' %}" class="text-decoration-none">
+    Forgot your password? Click here to reset it.
+</a>
+```
+
+## Signup Form
+
+### Default Form
+
+**Path:** `allauth.account.forms.SignupForm`  
+**Used on:** Signup view (`account_signup`)
+
+### Basic Customization
+
+```python
+# myproject/forms.py
+from allauth.account.forms import SignupForm
+from django import forms
+
+class MySignupForm(SignupForm):
+    first_name = forms.CharField(
+        max_length=30,
+        label='First Name',
+        widget=forms.TextInput(attrs={'placeholder': 'First Name'})
+    )
+    last_name = forms.CharField(
+        max_length=30,
+        label='Last Name',
+        widget=forms.TextInput(attrs={'placeholder': 'Last Name'})
+    )
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Customize existing fields
+        self.fields['email'].widget.attrs.update({
+            'class': 'form-control',
+            'placeholder': 'Email'
+        })
+    
+    def save(self, request):
+        # Ensure you call the parent class's save
+        user = super().save(request)
+        
+        # Add custom processing
+        user.first_name = self.cleaned_data['first_name']
+        user.last_name = self.cleaned_data['last_name']
+        user.save()
+        
+        # You must return the original result
+        return user
+```
+
+### Advanced Example with Validation
+
+```python
+from allauth.account.forms import SignupForm
+from django import forms
+from django.core.exceptions import ValidationError
+
+class MySignupForm(SignupForm):
+    company = forms.CharField(
+        max_length=100,
+        required=True,
+        label='Company Name'
+    )
+    department = forms.ChoiceField(
+        choices=[
+            ('engineering', 'Engineering'),
+            ('sales', 'Sales'),
+            ('marketing', 'Marketing'),
+            ('other', 'Other'),
+        ],
+        required=True,
+        label='Department'
+    )
+    agree_to_terms = forms.BooleanField(
+        required=True,
+        label='I agree to the Terms of Service and Privacy Policy'
+    )
+    
+    def clean_email(self):
+        email = self.cleaned_data['email']
+        # Only allow company email addresses
+        if not email.endswith('@company.com'):
+            raise ValidationError(
+                "Please use your company email address."
+            )
+        return email
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        # Add cross-field validation
+        company = cleaned_data.get('company')
+        email = cleaned_data.get('email')
+        
+        if company and email:
+            email_domain = email.split('@')[1]
+            if 'company.com' in email_domain:
+                # Validate company name matches email
+                pass
+        
+        return cleaned_data
+    
+    def save(self, request):
+        user = super().save(request)
+        
+        # Save additional fields to user profile
+        user.company = self.cleaned_data['company']
+        user.department = self.cleaned_data['department']
+        user.save()
+        
+        return user
+```
+
+```python
+# settings.py
+ACCOUNT_FORMS = {
+    'signup': 'myproject.forms.MySignupForm',
+}
+```
+
+### Signup Form Class
+
+Alternatively, use `ACCOUNT_SIGNUP_FORM_CLASS` to specify just additional fields:
+
+```python
+# myproject/forms.py
+from django import forms
+
+class CustomSignupForm(forms.Form):
+    """Additional fields for signup."""
+    phone = forms.CharField(max_length=20, required=False)
+    date_of_birth = forms.DateField(required=False)
+    
+    def signup(self, request, user):
+        """Save the additional fields."""
+        user.phone = self.cleaned_data['phone']
+        user.date_of_birth = self.cleaned_data['date_of_birth']
+        user.save()
+```
+
+```python
+# settings.py
+ACCOUNT_SIGNUP_FORM_CLASS = 'myproject.forms.CustomSignupForm'
+```
+
+**Source:** `allauth/account/app_settings.py:314`
+
+## Add Email Form
+
+### Default Form
+
+**Path:** `allauth.account.forms.AddEmailForm`  
+**Used on:** Email management view (`account_email`)
+
+### Customization
+
+```python
+from allauth.account.forms import AddEmailForm
+from django.core.exceptions import ValidationError
+
+class MyAddEmailForm(AddEmailForm):
+    def clean_email(self):
+        email = super().clean_email()
+        
+        # Only allow certain email domains
+        allowed_domains = ['company.com', 'corp.company.com']
+        domain = email.split('@')[1]
+        if domain not in allowed_domains:
+            raise ValidationError(
+                f"Email must be from one of: {', '.join(allowed_domains)}"
+            )
+        
+        return email
+    
+    def save(self, request):
+        # Ensure you call the parent class's save
+        email_address_obj = super().save(request)
+        
+        # Add custom processing
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"User {request.user.username} added email {email_address_obj.email}"
+        )
+        
+        # You must return the original result
+        return email_address_obj
+```
+
+### Available Attributes
+
+- `self.user` - The User object that is logged in
+
+## Change Password Form
+
+### Default Form
+
+**Path:** `allauth.account.forms.ChangePasswordForm`  
+**Used on:** Change password view (`account_change_password`)
+
+### Customization
+
+```python
+from allauth.account.forms import ChangePasswordForm
+from django.core.exceptions import ValidationError
+
+class MyChangePasswordForm(ChangePasswordForm):
+    def clean_password1(self):
+        password1 = self.cleaned_data.get('password1')
+        
+        # Check against user's old passwords
+        user = self.user
+        if user.check_password(password1):
+            raise ValidationError(
+                "New password cannot be the same as your current password."
+            )
+        
+        return password1
+    
+    def save(self):
+        # Ensure you call the parent class's save
+        super().save()
+        
+        # Add custom processing
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"User {self.user.username} changed password")
+        
+        # Send notification email
+        from django.core.mail import send_mail
+        send_mail(
+            'Password Changed',
+            'Your password was recently changed.',
+            'noreply@example.com',
+            [self.user.email],
+        )
+```
+
+### Available Attributes
+
+- `self.user` - The User object that is logged in
+
+## Set Password Form
+
+### Default Form
+
+**Path:** `allauth.account.forms.SetPasswordForm`  
+**Used on:** Set password view (`account_set_password`)
+
+Used when a user doesn't have a usable password (e.g., signed up via social auth).
+
+### Customization
+
+```python
+from allauth.account.forms import SetPasswordForm
+
+class MySetPasswordForm(SetPasswordForm):
+    def save(self):
+        super().save()
+        
+        # Mark user as having completed password setup
+        self.user.has_password = True
+        self.user.save()
+        
+        # Send welcome email
+        from django.core.mail import send_mail
+        send_mail(
+            'Password Set Successfully',
+            'You can now use your password to log in.',
+            'noreply@example.com',
+            [self.user.email],
+        )
+```
+
+### Available Attributes
+
+- `self.user` - The User object that is logged in
+
+## Reset Password Form
+
+### Default Form
+
+**Path:** `allauth.account.forms.ResetPasswordForm`  
+**Used on:** Password reset view (`account_reset_password`)
+
+### Customization
+
+```python
+from allauth.account.forms import ResetPasswordForm
+
+class MyResetPasswordForm(ResetPasswordForm):
+    def clean_email(self):
+        email = super().clean_email()
+        
+        # Add custom validation
+        # Check if email is from allowed domain
+        
+        return email
+    
+    def save(self, request, **kwargs):
+        # Ensure you call the parent class's save
+        email_address = super().save(request, **kwargs)
+        
+        # Add custom processing
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Password reset requested for {email_address}")
+        
+        # Ensure you return the original result
+        return email_address
+```
+
+### Available Attributes
+
+- `self.users` - List of all possible User objects with matching email address
+
+## Reset Password From Key Form
+
+### Default Form
+
+**Path:** `allauth.account.forms.ResetPasswordKeyForm`  
+**Used on:** Password reset confirmation view
+
+### Customization
+
+```python
+from allauth.account.forms import ResetPasswordKeyForm
+
+class MyResetPasswordKeyForm(ResetPasswordKeyForm):
+    def clean_password1(self):
+        password1 = self.cleaned_data.get('password1')
+        
+        # Custom password validation
+        if len(password1) < 12:
+            raise ValidationError(
+                "Password must be at least 12 characters long."
+            )
+        
+        return password1
+    
+    def save(self):
+        # Add custom processing before save
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"User {self.user.username} reset password")
+        
+        # Ensure you call the parent class's save
+        super().save()
+```
+
+### Available Attributes
+
+- `self.user` - The User object
+
+## Social Account Forms
+
+Customize social account forms using `SOCIALACCOUNT_FORMS`:
+
+```python
+# settings.py
+SOCIALACCOUNT_FORMS = {
+    'signup': 'myproject.forms.MySocialSignupForm',
+    'disconnect': 'myproject.forms.MyDisconnectForm',
+}
+```
+
+**Source:** `allauth/socialaccount/app_settings.py:130`
+
+### Social Signup Form
+
+```python
+from allauth.socialaccount.forms import SignupForm
+from django import forms
+
+class MySocialSignupForm(SignupForm):
+    newsletter = forms.BooleanField(
+        required=False,
+        label='Subscribe to newsletter'
+    )
+    
+    def save(self, request):
+        user = super().save(request)
+        
+        # Save newsletter preference
+        if self.cleaned_data['newsletter']:
+            # Subscribe to newsletter
+            pass
+        
+        return user
+```
+
+## Form Field Customization
+
+### Field Configuration
+
+Control which fields appear in the signup form:
+
+```python
+# settings.py
+ACCOUNT_SIGNUP_FIELDS = {
+    'email': {'required': True},
+    'username': {'required': True},
+    'password1': {'required': True},
+    'password2': {'required': True},
+}
+```
+
+**Source:** `allauth/account/app_settings.py:328`
+
+### Widget Customization
+
+Customize form widgets:
+
+```python
+from allauth.account.forms import SignupForm
+from django import forms
+
+class MySignupForm(SignupForm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Add CSS classes
+        for field_name, field in self.fields.items():
+            field.widget.attrs['class'] = 'form-control'
+        
+        # Add placeholders
+        self.fields['email'].widget.attrs['placeholder'] = 'you@example.com'
+        self.fields['username'].widget.attrs['placeholder'] = 'Choose a username'
+        
+        # Add help text
+        self.fields['password1'].help_text = (
+            'Must be at least 8 characters with letters and numbers'
+        )
+```
+
+## Complete Example
+
+Here's a comprehensive example with multiple customized forms:
+
+```python
+# myproject/forms.py
+from allauth.account.forms import (
+    LoginForm, SignupForm, ChangePasswordForm, ResetPasswordForm
+)
+from django import forms
+from django.core.exceptions import ValidationError
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class MyLoginForm(LoginForm):
+    """Custom login form with enhanced styling."""
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['login'].widget.attrs.update({
+            'class': 'form-control form-control-lg',
+            'placeholder': 'Email or Username',
+            'autofocus': True
+        })
+        self.fields['password'].widget.attrs.update({
+            'class': 'form-control form-control-lg',
+            'placeholder': 'Password'
+        })
+    
+    def login(self, request, redirect_url=None):
+        logger.info(f"User {self.user.username} logging in")
+        return super().login(request, redirect_url)
+
+
+class MySignupForm(SignupForm):
+    """Custom signup form with additional fields."""
+    
+    first_name = forms.CharField(
+        max_length=30,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'First Name'
+        })
+    )
+    last_name = forms.CharField(
+        max_length=30,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Last Name'
+        })
+    )
+    company = forms.CharField(
+        max_length=100,
+        required=True,
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'Company Name'
+        })
+    )
+    agree_to_terms = forms.BooleanField(
+        required=True,
+        label='I agree to the Terms of Service',
+        error_messages={
+            'required': 'You must agree to the terms to continue'
+        }
+    )
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Apply styling to all fields
+        for field_name, field in self.fields.items():
+            if field_name not in ['agree_to_terms']:
+                field.widget.attrs['class'] = 'form-control'
+    
+    def clean_email(self):
+        email = self.cleaned_data['email']
+        # Only allow corporate emails
+        if email.endswith(('@gmail.com', '@yahoo.com', '@hotmail.com')):
+            raise ValidationError(
+                "Please use your corporate email address."
+            )
+        return email
+    
+    def save(self, request):
+        user = super().save(request)
+        user.first_name = self.cleaned_data['first_name']
+        user.last_name = self.cleaned_data['last_name']
+        user.company = self.cleaned_data['company']
+        user.save()
+        
+        logger.info(f"New user registered: {user.username}")
+        return user
+
+
+class MyChangePasswordForm(ChangePasswordForm):
+    """Custom change password form with additional validation."""
+    
+    def clean_password1(self):
+        password1 = self.cleaned_data.get('password1')
+        
+        # Can't reuse current password
+        if self.user.check_password(password1):
+            raise ValidationError(
+                "New password must be different from current password."
+            )
+        
+        return password1
+    
+    def save(self):
+        super().save()
+        logger.info(f"User {self.user.username} changed password")
+        
+        # Send notification email
+        from allauth.account.adapter import get_adapter
+        adapter = get_adapter()
+        adapter.send_notification_mail(
+            'account/email/password_changed',
+            self.user
+        )
+
+
+class MyResetPasswordForm(ResetPasswordForm):
+    """Custom reset password form with logging."""
+    
+    def save(self, request, **kwargs):
+        email = super().save(request, **kwargs)
+        logger.info(f"Password reset requested for {email}")
+        return email
+```
+
+```python
+# settings.py
+ACCOUNT_FORMS = {
+    'login': 'myproject.forms.MyLoginForm',
+    'signup': 'myproject.forms.MySignupForm',
+    'change_password': 'myproject.forms.MyChangePasswordForm',
+    'reset_password': 'myproject.forms.MyResetPasswordForm',
+}
+
+# Signup field configuration
+ACCOUNT_SIGNUP_FIELDS = {
+    'email': {'required': True},
+    'username': {'required': True},
+    'password1': {'required': True},
+    'password2': {'required': True},
+}
+```
+
+## Validation Helpers
+
+### Using Django Validators
+
+```python
+from django.core.validators import RegexValidator
+from allauth.account.forms import SignupForm
+from django import forms
+
+class MySignupForm(SignupForm):
+    phone = forms.CharField(
+        validators=[
+            RegexValidator(
+                regex=r'^\+?1?\d{9,15}$',
+                message="Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed."
+            )
+        ]
+    )
+```
+
+### Custom Validation Methods
+
+```python
+class MySignupForm(SignupForm):
+    def clean_username(self):
+        username = self.cleaned_data['username']
+        
+        # No profanity
+        bad_words = ['spam', 'admin', 'root']
+        if username.lower() in bad_words:
+            raise ValidationError("This username is not allowed.")
+        
+        return username
+    
+    def clean(self):
+        """Cross-field validation."""
+        cleaned_data = super().clean()
+        password1 = cleaned_data.get('password1')
+        username = cleaned_data.get('username')
+        
+        if password1 and username:
+            # Password can't contain username
+            if username.lower() in password1.lower():
+                raise ValidationError(
+                    "Password cannot contain your username."
+                )
+        
+        return cleaned_data
+```
+
+## Best Practices
+
+1. **Always call super()** - Ensure parent methods are called to maintain functionality
+2. **Return values** - Form save methods must return the expected object
+3. **Log changes** - Log important events like password changes
+4. **Validate early** - Use `clean_*` methods for field-specific validation
+5. **Use error_messages** - Provide user-friendly error messages
+6. **Style consistently** - Apply consistent CSS classes and styling
+7. **Test thoroughly** - Test all validation paths and edge cases
+
+## Related
+
+- [Settings](/configuration/settings) - Configure form behavior
+- [Adapters](/configuration/adapters) - Customize form processing logic
+- [Templates](/configuration/templates) - Customize form rendering

@@ -1,0 +1,938 @@
+---
+title: Headless API Endpoints
+description: Complete reference for django-allauth headless REST API endpoints
+---
+
+The headless API provides a complete REST interface for authentication flows. All endpoints are versioned under `/v1/` and support both browser and app clients.
+
+## Base URL Structure
+
+Endpoints are organized by client type:
+
+- **Browser client**: `/_allauth/browser/v1/`
+- **App client**: `/_allauth/app/v1/`
+
+The client type determines authentication mechanisms:
+- **Browser**: Uses session cookies
+- **App**: Uses token-based authentication (session tokens or JWTs)
+
+## Configuration
+
+### GET /config
+
+Returns the current authentication configuration.
+
+**Response Fields**
+
+<ResponseField name="account" type="object">
+  Account configuration settings
+  
+  <Expandable title="properties">
+    <ResponseField name="login_methods" type="array">
+      Available login methods: `email`, `username`, or `phone`
+    </ResponseField>
+    
+    <ResponseField name="is_open_for_signup" type="boolean">
+      Whether new user registration is enabled
+    </ResponseField>
+    
+    <ResponseField name="email_verification_by_code_enabled" type="boolean">
+      Whether email verification uses codes instead of links
+    </ResponseField>
+    
+    <ResponseField name="login_by_code_enabled" type="boolean">
+      Whether passwordless login via code is enabled
+    </ResponseField>
+    
+    <ResponseField name="password_reset_by_code_enabled" type="boolean">
+      Whether password reset uses codes instead of links
+    </ResponseField>
+    
+    <ResponseField name="authentication_method" type="string">
+      Legacy field: `email`, `username`, or `username_email`
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example Response**
+
+```json
+{
+  "account": {
+    "login_methods": ["email"],
+    "is_open_for_signup": true,
+    "email_verification_by_code_enabled": false,
+    "login_by_code_enabled": false,
+    "password_reset_by_code_enabled": false,
+    "authentication_method": "email"
+  }
+}
+```
+
+## Authentication
+
+### POST /auth/login
+
+Authenticate a user with credentials.
+
+**Request Body**
+
+<ParamField body="email" type="string">
+  User's email address (when email login is enabled)
+</ParamField>
+
+<ParamField body="username" type="string">
+  User's username (when username login is enabled)
+</ParamField>
+
+<ParamField body="phone" type="string">
+  User's phone number in E.164 format (when phone login is enabled)
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User's password
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse) with user data and session information.
+
+**Example Request**
+
+```json
+{
+  "email": "user@example.com",
+  "password": "secretpassword"
+}
+```
+
+**Rate Limiting**: This endpoint is rate-limited per the `login` action.
+
+---
+
+### POST /auth/signup
+
+Register a new user account.
+
+**Request Body**
+
+<ParamField body="email" type="string" required>
+  User's email address
+</ParamField>
+
+<ParamField body="username" type="string">
+  Desired username (if username field is configured)
+</ParamField>
+
+<ParamField body="password" type="string">
+  Account password (required unless passwordless signup is configured)
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse). May include pending verification flows.
+
+**Status Codes**
+
+- `200 OK`: User created and authenticated
+- `403 Forbidden`: Signup is disabled
+- `409 Conflict`: User is already authenticated
+
+**Rate Limiting**: This endpoint is rate-limited per the `signup` action.
+
+---
+
+### GET /auth/session
+
+Retrieve the current session state.
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse) with current user information or 401 if not authenticated.
+
+---
+
+### DELETE /auth/session
+
+Log out the current user.
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse) with `is_authenticated: false`.
+
+---
+
+### POST /auth/code/request
+
+Request a login code for passwordless authentication.
+
+**Request Body**
+
+<ParamField body="email" type="string">
+  Email address to send the code to
+</ParamField>
+
+<ParamField body="phone" type="string">
+  Phone number to send the code to (E.164 format)
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse) with a pending `login_by_code` flow.
+
+---
+
+### POST /auth/code/confirm
+
+Confirm a login code.
+
+**Request Body**
+
+<ParamField body="code" type="string" required>
+  The verification code received via email or SMS
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse) with authenticated user data.
+
+**Status Codes**
+
+- `200 OK`: Code verified, user authenticated
+- `409 Conflict`: No pending login code verification
+
+---
+
+### POST /auth/reauthenticate
+
+Re-authenticate the current user (for sensitive operations).
+
+**Request Body**
+
+<ParamField body="password" type="string" required>
+  User's current password
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse).
+
+**Rate Limiting**: This endpoint is rate-limited per the `reauthenticate` action.
+
+## Email Verification
+
+### GET /auth/email/verify
+
+Verify an email address.
+
+**Headers**
+
+<ParamField header="X-Email-Verification-Key" type="string" required>
+  The verification key from the email link or code
+</ParamField>
+
+**Response Fields**
+
+<ResponseField name="email" type="string">
+  The email address being verified
+</ResponseField>
+
+<ResponseField name="user" type="object">
+  User information
+</ResponseField>
+
+<ResponseField name="meta.is_authenticating" type="boolean">
+  Whether this verification is part of an authentication flow
+</ResponseField>
+
+**Status Codes**
+
+- `200 OK`: Verification key is valid
+- `409 Conflict`: No pending verification
+
+---
+
+### POST /auth/email/verify
+
+Complete email verification.
+
+**Request Body**
+
+<ParamField body="key" type="string" required>
+  The verification key
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse). If part of login/signup flow, the user will be authenticated.
+
+---
+
+### POST /auth/email/verify/resend
+
+Resend email verification code.
+
+**Response**
+
+Returns status 200 if resent successfully.
+
+**Status Codes**
+
+- `200 OK`: Code resent
+- `409 Conflict`: No pending verification or resend not available
+- `429 Too Many Requests`: Rate limited
+
+## Phone Verification
+
+### POST /auth/phone/verify
+
+Verify a phone number with a code.
+
+**Request Body**
+
+<ParamField body="code" type="string" required>
+  The verification code received via SMS
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse).
+
+**Status Codes**
+
+- `200 OK`: Phone verified
+- `409 Conflict`: No pending phone verification
+
+---
+
+### POST /auth/phone/verify/resend
+
+Resend phone verification code.
+
+**Response**
+
+Returns status 200 if resent successfully.
+
+**Status Codes**
+
+- `429 Too Many Requests`: Rate limited
+
+## Password Management
+
+### POST /auth/password/request
+
+Request a password reset.
+
+**Request Body**
+
+<ParamField body="email" type="string" required>
+  Email address of the account
+</ParamField>
+
+**Response**
+
+Returns status 200 regardless of whether the email exists (to prevent user enumeration).
+
+**Status Codes**
+
+- `200 OK`: Reset initiated (if account exists)
+- `429 Too Many Requests`: Rate limited
+
+---
+
+### GET /auth/password/reset
+
+Validate a password reset key.
+
+**Headers**
+
+<ParamField header="X-Password-Reset-Key" type="string" required>
+  The reset key from the email link or code
+</ParamField>
+
+**Response Fields**
+
+<ResponseField name="user" type="object">
+  User information for the account being reset
+</ResponseField>
+
+**Status Codes**
+
+- `200 OK`: Reset key is valid
+- `409 Conflict`: No pending password reset
+
+**Rate Limiting**: This endpoint is rate-limited per the `reset_password_from_key` action.
+
+---
+
+### POST /auth/password/reset
+
+Complete password reset with new password.
+
+**Request Body**
+
+<ParamField body="key" type="string" required>
+  The reset key (for link-based reset)
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  New password
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse) with the user authenticated.
+
+**Rate Limiting**: This endpoint is rate-limited per the `reset_password_from_key` action.
+
+---
+
+### POST /account/password/change
+
+Change the password for an authenticated user.
+
+**Request Body**
+
+<ParamField body="current_password" type="string">
+  Current password (omit if setting password for the first time)
+</ParamField>
+
+<ParamField body="new_password" type="string" required>
+  New password
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse).
+
+**Authentication**: Required
+
+**Rate Limiting**: This endpoint is rate-limited per the `change_password` action.
+
+## Email Management
+
+### GET /account/email
+
+List all email addresses for the current user.
+
+**Response**
+
+Returns an array of email address objects.
+
+<ResponseField name="[].email" type="string">
+  Email address
+</ResponseField>
+
+<ResponseField name="[].verified" type="boolean">
+  Whether the email is verified
+</ResponseField>
+
+<ResponseField name="[].primary" type="boolean">
+  Whether this is the primary email
+</ResponseField>
+
+**Example Response**
+
+```json
+[
+  {
+    "email": "user@example.com",
+    "verified": true,
+    "primary": true
+  },
+  {
+    "email": "alternate@example.com",
+    "verified": false,
+    "primary": false
+  }
+]
+```
+
+**Authentication**: Required
+
+---
+
+### POST /account/email
+
+Add a new email address.
+
+**Request Body**
+
+<ParamField body="email" type="string" required>
+  New email address to add
+</ParamField>
+
+**Response**
+
+Returns updated list of email addresses.
+
+**Authentication**: Required
+
+**Rate Limiting**: Rate-limited per the `manage_email` action.
+
+---
+
+### DELETE /account/email
+
+Remove an email address.
+
+**Request Body**
+
+<ParamField body="email" type="string" required>
+  Email address to remove
+</ParamField>
+
+**Response**
+
+Returns updated list of email addresses.
+
+**Authentication**: Required
+
+**Rate Limiting**: Rate-limited per the `manage_email` action.
+
+---
+
+### PATCH /account/email
+
+Mark an email address as primary.
+
+**Request Body**
+
+<ParamField body="email" type="string" required>
+  Email address to mark as primary
+</ParamField>
+
+**Response**
+
+Returns updated list of email addresses.
+
+**Authentication**: Required
+
+**Rate Limiting**: Rate-limited per the `manage_email` action.
+
+---
+
+### PUT /account/email
+
+Resend verification email.
+
+**Request Body**
+
+<ParamField body="email" type="string" required>
+  Email address to resend verification for
+</ParamField>
+
+**Response**
+
+**Status Codes**
+
+- `200 OK`: Verification sent
+- `403 Forbidden`: Verification not sent (rate limited or already verified)
+
+**Authentication**: Required
+
+**Rate Limiting**: Rate-limited per the `manage_email` action.
+
+## Phone Management
+
+### GET /account/phone
+
+Get the current phone number.
+
+**Response**
+
+Returns an array with the phone number (if set).
+
+<ResponseField name="[].phone" type="string">
+  Phone number in E.164 format
+</ResponseField>
+
+<ResponseField name="[].verified" type="boolean">
+  Whether the phone is verified
+</ResponseField>
+
+**Example Response**
+
+```json
+[
+  {
+    "phone": "+14155552671",
+    "verified": true
+  }
+]
+```
+
+**Authentication**: Required
+
+---
+
+### POST /account/phone
+
+Change phone number (initiates verification).
+
+**Request Body**
+
+<ParamField body="phone" type="string" required>
+  New phone number in E.164 format
+</ParamField>
+
+**Response**
+
+Returns the new phone number with `verified: false`.
+
+**Status Codes**
+
+- `202 Accepted`: Verification code sent
+
+**Authentication**: Required
+
+**Rate Limiting**: Rate-limited per the `change_phone` action.
+
+## Social Account Endpoints
+
+Available when `SOCIALACCOUNT_ENABLED` is `True`.
+
+### POST /auth/provider/redirect
+
+Initiate OAuth provider redirect flow.
+
+**Request Body**
+
+<ParamField body="provider" type="string" required>
+  Provider ID (e.g., `google`, `github`)
+</ParamField>
+
+<ParamField body="callback_url" type="string">
+  URL to redirect to after authentication
+</ParamField>
+
+<ParamField body="process" type="string">
+  Either `login` or `connect`
+</ParamField>
+
+**Response Fields**
+
+<ResponseField name="redirect_url" type="string">
+  URL to redirect the user to for OAuth authorization
+</ResponseField>
+
+---
+
+### POST /auth/provider/token
+
+Authenticate using provider token (for mobile apps).
+
+**Request Body**
+
+<ParamField body="provider" type="string" required>
+  Provider ID
+</ParamField>
+
+<ParamField body="access_token" type="string">
+  OAuth access token
+</ParamField>
+
+<ParamField body="id_token" type="string">
+  OAuth ID token (for OpenID Connect)
+</ParamField>
+
+<ParamField body="client_id" type="string">
+  OAuth client ID (required for some providers)
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse).
+
+---
+
+### POST /auth/provider/signup
+
+Complete social account signup.
+
+**Request Body**
+
+<ParamField body="email" type="string">
+  Email to use (if not provided by OAuth)
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse).
+
+---
+
+### GET /account/providers
+
+List connected social accounts.
+
+**Response**
+
+Returns an array of connected provider accounts.
+
+**Authentication**: Required
+
+## MFA Endpoints
+
+Available when `MFA_ENABLED` is `True`.
+
+### POST /auth/2fa/authenticate
+
+Authenticate with a second factor.
+
+**Request Body**
+
+<ParamField body="code" type="string" required>
+  TOTP code or recovery code
+</ParamField>
+
+**Response**
+
+Returns an [AuthenticationResponse](#authenticationresponse).
+
+---
+
+### GET /account/authenticators
+
+List configured MFA authenticators.
+
+**Response**
+
+Returns an array of authenticator objects.
+
+**Authentication**: Required
+
+---
+
+### GET /account/authenticators/totp
+
+Get TOTP authenticator details or generate new secret.
+
+**Response Fields**
+
+<ResponseField name="secret" type="string">
+  TOTP secret (when generating new)
+</ResponseField>
+
+<ResponseField name="qr_code_url" type="string">
+  Data URL for QR code
+</ResponseField>
+
+**Authentication**: Required
+
+---
+
+### POST /account/authenticators/totp
+
+Activate TOTP authenticator.
+
+**Request Body**
+
+<ParamField body="code" type="string" required>
+  TOTP code to verify setup
+</ParamField>
+
+**Response**
+
+Returns authenticator details.
+
+**Authentication**: Required
+
+## Token Endpoints (App Client Only)
+
+Available only for the `app` client.
+
+### POST /tokens/refresh
+
+Refresh an access token using a refresh token.
+
+**Request Body**
+
+<ParamField body="refresh_token" type="string" required>
+  Valid refresh token
+</ParamField>
+
+**Response Fields**
+
+<ResponseField name="access_token" type="string">
+  New access token
+</ResponseField>
+
+<ResponseField name="refresh_token" type="string">
+  New refresh token (if rotation is enabled)
+</ResponseField>
+
+**Example Request**
+
+```json
+{
+  "refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+**Example Response**
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+## Common Response Types
+
+### AuthenticationResponse
+
+Returned by most authentication-related endpoints.
+
+<ResponseField name="data" type="object">
+  Response data
+  
+  <Expandable title="properties">
+    <ResponseField name="user" type="object">
+      User information (when authenticated)
+      
+      <Expandable title="properties">
+        <ResponseField name="id" type="string | number">
+          User ID
+        </ResponseField>
+        
+        <ResponseField name="display" type="string">
+          Display name
+        </ResponseField>
+        
+        <ResponseField name="email" type="string">
+          Primary email address
+        </ResponseField>
+        
+        <ResponseField name="username" type="string">
+          Username (if enabled)
+        </ResponseField>
+        
+        <ResponseField name="has_usable_password" type="boolean">
+          Whether the account has a password set
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="methods" type="array">
+      Authentication methods used in current session
+    </ResponseField>
+    
+    <ResponseField name="flows" type="array">
+      Available or pending authentication flows
+      
+      <Expandable title="properties">
+        <ResponseField name="id" type="string">
+          Flow identifier
+        </ResponseField>
+        
+        <ResponseField name="is_pending" type="boolean">
+          Whether this flow is currently active
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="meta" type="object">
+  Metadata
+  
+  <Expandable title="properties">
+    <ResponseField name="is_authenticated" type="boolean">
+      Whether the user is authenticated
+    </ResponseField>
+    
+    <ResponseField name="access_token" type="string">
+      Access token (app client with JWT strategy)
+    </ResponseField>
+    
+    <ResponseField name="refresh_token" type="string">
+      Refresh token (app client with JWT strategy)
+    </ResponseField>
+    
+    <ResponseField name="session_token" type="string">
+      Session token (app client)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example Response (Authenticated)**
+
+```json
+{
+  "data": {
+    "user": {
+      "id": 123,
+      "display": "John Doe",
+      "email": "john@example.com",
+      "has_usable_password": true
+    },
+    "methods": [
+      {
+        "method": "password",
+        "at": 1678901234,
+        "email": "john@example.com"
+      }
+    ]
+  },
+  "meta": {
+    "is_authenticated": true,
+    "session_token": "abc123..."
+  }
+}
+```
+
+**Example Response (Not Authenticated)**
+
+```json
+{
+  "data": {
+    "flows": [
+      {"id": "login"},
+      {"id": "signup"},
+      {"id": "provider_redirect"}
+    ]
+  },
+  "meta": {
+    "is_authenticated": false
+  }
+}
+```
+
+## Error Responses
+
+All endpoints may return error responses with validation errors.
+
+**Error Response Format**
+
+```json
+{
+  "errors": [
+    {
+      "code": "invalid",
+      "param": "email",
+      "message": "Enter a valid email address."
+    }
+  ]
+}
+```
+
+**Common Error Codes**
+
+- `required`: Required field is missing
+- `invalid`: Field value is invalid
+- `email_password_mismatch`: Invalid email/password combination
+- `username_password_mismatch`: Invalid username/password combination
+- `too_many_login_attempts`: Login temporarily blocked due to failed attempts
+
+## Status Codes
+
+- `200 OK`: Request successful
+- `202 Accepted`: Request accepted, pending further action
+- `400 Bad Request`: Invalid request data
+- `401 Unauthorized`: Authentication required or failed
+- `403 Forbidden`: Action not allowed
+- `409 Conflict`: Request conflicts with current state
+- `429 Too Many Requests`: Rate limit exceeded
+- `500 Internal Server Error`: Server error

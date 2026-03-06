@@ -1,122 +1,161 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Django Allauth",
+  "theme": "maple",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#14ad14",
+    "light": "#145812",
+    "dark": "#eeeeec"
   },
-  "favicon": "/favicon.svg",
+  "favicon": "https://media.brand.dev/f59fe8a8-a5d8-4ff3-b6ca-edbe8e5e92f5.png",
+  "logo": {
+    "light": "/logo.png",
+    "dark": "/logo.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/pennersr/django-allauth"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/pennersr/django-allauth"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
-              "quickstart",
-              "development"
+              "introduction",
+              "installation",
+              "quickstart"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Core Concepts",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "concepts/overview",
+              "concepts/account-management",
+              "concepts/authentication-flows",
+              "concepts/email-verification",
+              "concepts/rate-limiting"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Social Authentication",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "socialaccount/introduction",
+              "socialaccount/configuration",
+              "socialaccount/providers",
+              "socialaccount/advanced"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Multi-Factor Authentication",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "mfa/introduction",
+              "mfa/totp",
+              "mfa/webauthn",
+              "mfa/recovery-codes"
+            ]
+          },
+          {
+            "group": "Headless API",
+            "pages": [
+              "headless/introduction",
+              "headless/installation",
+              "headless/configuration",
+              "headless/authentication",
+              "headless/cors"
+            ]
+          },
+          {
+            "group": "Identity Provider",
+            "pages": [
+              "idp/introduction",
+              "idp/openid-connect",
+              "idp/saml"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/settings",
+              "configuration/adapters",
+              "configuration/templates",
+              "configuration/forms"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/user-sessions",
+              "guides/phone-authentication",
+              "guides/custom-user-model",
+              "guides/email-customization",
+              "guides/security-best-practices"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "API Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Account",
             "pages": [
-              "api-reference/introduction"
+              "api/account/models",
+              "api/account/forms",
+              "api/account/views",
+              "api/account/signals",
+              "api/account/decorators"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "Social Account",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "api/socialaccount/models",
+              "api/socialaccount/forms",
+              "api/socialaccount/views",
+              "api/socialaccount/signals"
+            ]
+          },
+          {
+            "group": "MFA",
+            "pages": [
+              "api/mfa/models",
+              "api/mfa/adapters",
+              "api/mfa/views"
+            ]
+          },
+          {
+            "group": "Headless",
+            "pages": [
+              "api/headless/endpoints",
+              "api/headless/tokens",
+              "api/headless/adapters"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Migration",
+        "groups": [
+          {
+            "group": "Release Notes",
+            "pages": [
+              "migration/changelog",
+              "migration/upgrade-guide",
+              "migration/breaking-changes"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

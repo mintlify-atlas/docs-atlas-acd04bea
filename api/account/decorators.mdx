@@ -1,0 +1,322 @@
+---
+title: Decorators
+description: Function decorators for view protection and authentication requirements
+---
+
+## verified_email_required
+
+Decorator that ensures the user is authenticated and has at least one verified email address.
+
+### Parameters
+
+<ParamField path="function" type="callable" optional>
+  The view function to decorate. Can be omitted when using decorator with arguments.
+</ParamField>
+
+<ParamField path="login_url" type="str" optional>
+  URL to redirect to if user is not authenticated. Defaults to `settings.LOGIN_URL`.
+</ParamField>
+
+<ParamField path="redirect_field_name" type="str" default="'next'">
+  Name of the query parameter for the redirect URL.
+</ParamField>
+
+### Behavior
+
+1. If user is not authenticated, redirects to login (like `@login_required`)
+2. If user is authenticated but has no verified email:
+   - Automatically resends verification email
+   - Shows verification required page or redirects to code entry if `EMAIL_VERIFICATION_BY_CODE_ENABLED`
+3. If user has verified email, allows access to view
+
+### Usage
+
+```python
+from allauth.account.decorators import verified_email_required
+from django.http import HttpResponse
+
+@verified_email_required
+def premium_feature(request):
+    return HttpResponse("Welcome to premium features!")
+```
+
+### With Custom Login URL
+
+```python
+@verified_email_required(login_url='/custom-login/')
+def protected_view(request):
+    return HttpResponse("Protected content")
+```
+
+### With Custom Redirect Field
+
+```python
+@verified_email_required(redirect_field_name='redirect_to')
+def my_view(request):
+    return HttpResponse("Verified users only")
+```
+
+### Class-Based Views
+
+```python
+from django.utils.decorators import method_decorator
+from django.views.generic import TemplateView
+
+@method_decorator(verified_email_required, name='dispatch')
+class PremiumView(TemplateView):
+    template_name = 'premium.html'
+```
+
+---
+
+## reauthentication_required
+
+Decorator that requires the user to have recently authenticated. Useful for sensitive operations.
+
+### Parameters
+
+<ParamField path="function" type="callable" optional>
+  The view function to decorate.
+</ParamField>
+
+<ParamField path="redirect_field_name" type="str" default="'next'">
+  Name of the query parameter for the redirect URL.
+</ParamField>
+
+<ParamField path="allow_get" type="bool" default="False">
+  Whether to allow GET requests without reauthentication.
+</ParamField>
+
+<ParamField path="enabled" type="bool | callable" optional>
+  Control whether reauthentication is required. Can be a boolean or callable that accepts request and returns bool.
+</ParamField>
+
+### Behavior
+
+1. Checks if user authenticated recently (based on session timestamp)
+2. If not, raises `ReauthenticationRequired` exception
+3. User is redirected to reauthentication page
+4. After reauthenticating, user is redirected back to original view
+
+### Usage
+
+```python
+from allauth.account.decorators import reauthentication_required
+from django.http import HttpResponse
+
+@reauthentication_required
+def change_password(request):
+    # User must have recently authenticated
+    if request.method == 'POST':
+        # Process password change
+        pass
+    return HttpResponse("Change password form")
+```
+
+### Allow GET Requests
+
+```python
+@reauthentication_required(allow_get=True)
+def sensitive_data(request):
+    # GET requests don't require reauthentication
+    # POST, PUT, DELETE, etc. do require it
+    if request.method == 'POST':
+        # Update sensitive data
+        pass
+    return render(request, 'sensitive_data.html')
+```
+
+### Conditional Reauthentication
+
+```python
+def check_if_reauthentication_needed(request):
+    # Only require reauthentication for certain actions
+    return 'delete' in request.POST
+
+@reauthentication_required(enabled=check_if_reauthentication_needed)
+def manage_account(request):
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'delete':
+            # This will require reauthentication
+            pass
+        else:
+            # This won't
+            pass
+    return render(request, 'manage_account.html')
+```
+
+### Always Disabled
+
+```python
+@reauthentication_required(enabled=False)
+def view_settings(request):
+    # Reauthentication is disabled for this view
+    return render(request, 'settings.html')
+```
+
+---
+
+## secure_admin_login
+
+Decorator for securing admin login views. Ensures only staff members can access admin login.
+
+### Parameters
+
+<ParamField path="function" type="callable" optional>
+  The view function to decorate.
+</ParamField>
+
+### Behavior
+
+1. If user is authenticated:
+   - Checks if user is staff and active
+   - Raises `PermissionDenied` if not staff or not active
+   - Allows access if user is staff and active
+2. If user is not authenticated:
+   - Redirects to login URL with next parameter
+
+### Usage
+
+```python
+from allauth.account.decorators import secure_admin_login
+from django.contrib.admin.sites import AdminSite
+
+class SecureAdminSite(AdminSite):
+    @secure_admin_login
+    def login(self, request, extra_context=None):
+        return super().login(request, extra_context)
+
+admin_site = SecureAdminSite(name='secure_admin')
+```
+
+### Custom Admin Login View
+
+```python
+from allauth.account.decorators import secure_admin_login
+from django.shortcuts import render
+
+@secure_admin_login
+def custom_admin_login(request):
+    # Only authenticated staff users reach here
+    return render(request, 'admin/custom_login.html')
+```
+
+---
+
+## Complete Usage Examples
+
+### Combining Decorators
+
+```python
+from allauth.account.decorators import verified_email_required, reauthentication_required
+from django.views.decorators.http import require_http_methods
+
+@verified_email_required
+@reauthentication_required
+@require_http_methods(["GET", "POST"])
+def delete_account(request):
+    """View that requires verified email and recent authentication"""
+    if request.method == 'POST':
+        request.user.delete()
+        return redirect('home')
+    return render(request, 'account/delete_confirm.html')
+```
+
+### Premium Feature Gate
+
+```python
+from allauth.account.decorators import verified_email_required
+from django.contrib.auth.decorators import login_required
+
+@login_required
+@verified_email_required
+def premium_dashboard(request):
+    """Only verified users can access premium features"""
+    if not request.user.is_premium:
+        return redirect('upgrade')
+    return render(request, 'premium/dashboard.html')
+```
+
+### Conditional Reauthentication by Value
+
+```python
+from allauth.account.decorators import reauthentication_required
+
+def is_high_value_transaction(request):
+    """Require reauthentication for transactions over $1000"""
+    if request.method == 'POST':
+        amount = float(request.POST.get('amount', 0))
+        return amount > 1000
+    return False
+
+@reauthentication_required(enabled=is_high_value_transaction)
+def make_payment(request):
+    if request.method == 'POST':
+        # Process payment
+        pass
+    return render(request, 'payment.html')
+```
+
+### Class-Based View Examples
+
+```python
+from django.utils.decorators import method_decorator
+from django.views.generic import UpdateView
+from allauth.account.decorators import verified_email_required, reauthentication_required
+
+@method_decorator(verified_email_required, name='dispatch')
+class ProfileUpdateView(UpdateView):
+    template_name = 'profile_update.html'
+    
+    def get_object(self):
+        return self.request.user.profile
+
+@method_decorator(reauthentication_required, name='dispatch')
+class SecuritySettingsView(UpdateView):
+    template_name = 'security_settings.html'
+    
+    def get_object(self):
+        return self.request.user
+```
+
+### API View Protection
+
+```python
+from rest_framework.decorators import api_view
+from allauth.account.decorators import verified_email_required
+
+@api_view(['POST'])
+@verified_email_required
+def api_premium_endpoint(request):
+    """API endpoint requiring verified email"""
+    return Response({'data': 'premium data'})
+```
+
+## Integration with Settings
+
+### Configure Reauthentication Timeout
+
+```python
+# settings.py
+ACCOUNT_REAUTHENTICATION_TIMEOUT = 300  # 5 minutes
+```
+
+### Email Verification Templates
+
+When `@verified_email_required` blocks a user, it renders:
+- `account/verified_email_required.html` (if using template response)
+- Or redirects to `account_email_verification_sent` (if `EMAIL_VERIFICATION_BY_CODE_ENABLED`)
+
+Customize these templates to match your design:
+
+```html
+<!-- templates/account/verified_email_required.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Email Verification Required</h2>
+<p>Please verify your email address to access this feature.</p>
+<p>We've sent a verification email to {{ user.email }}.</p>
+{% endblock %}
+```

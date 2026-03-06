@@ -1,0 +1,534 @@
+---
+title: MFA Views
+description: Class-based views for multi-factor authentication workflows
+---
+
+## Overview
+
+django-allauth provides class-based views for all MFA workflows including TOTP, WebAuthn, and recovery codes. These views can be used directly or subclassed for customization.
+
+## Base MFA Views
+
+### AuthenticateView
+
+**Source:** `allauth/mfa/base/views.py:28`
+
+Handles MFA authentication during login.
+
+**URL Name:** `mfa_authenticate`
+
+**Template:** `mfa/authenticate.html`
+
+**Form Classes:**
+- `AuthenticateForm` - For TOTP/recovery codes
+- `AuthenticateWebAuthnForm` - For WebAuthn
+
+**Decorators:** `@login_stage_required(stage=AuthenticateStage.key)`
+
+**Context:**
+- `form` - The authentication form
+- `webauthn_form` - WebAuthn form (if enabled)
+- `js_data` - JavaScript data for WebAuthn (request options)
+- `MFA_SUPPORTED_TYPES` - List of enabled MFA types
+
+```python
+from allauth.mfa.base.views import AuthenticateView
+
+class CustomAuthenticateView(AuthenticateView):
+    template_name = 'myapp/mfa_authenticate.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['show_help_text'] = True
+        return context
+```
+
+### ReauthenticateView
+
+**Source:** `allauth/mfa/base/views.py:117`
+
+Handles MFA re-authentication for sensitive operations.
+
+**URL Name:** `mfa_reauthenticate`
+
+**Template:** `mfa/reauthenticate.html`
+
+**Form Class:** `ReauthenticateForm`
+
+**Decorators:** `@login_required`
+
+```python
+from django.urls import path
+from allauth.mfa.base.views import reauthenticate
+
+urlpatterns = [
+    path('mfa/reauthenticate/', reauthenticate, name='mfa_reauthenticate'),
+]
+```
+
+### IndexView
+
+**Source:** `allauth/mfa/base/views.py:138`
+
+Displays MFA management dashboard showing all configured authenticators.
+
+**URL Name:** `mfa_index`
+
+**Template:** `mfa/index.html`
+
+**Decorators:** `@login_required`
+
+**Context:**
+- `authenticators` - Dictionary of authenticators by type
+- `MFA_SUPPORTED_TYPES` - List of enabled MFA types
+- `is_mfa_enabled` - Boolean indicating if user has MFA
+
+```python
+# Template usage
+{% if is_mfa_enabled %}
+  <h2>Your Authenticators</h2>
+  {% if authenticators.totp %}
+    <p>TOTP: Active</p>
+  {% endif %}
+  {% if authenticators.webauthn %}
+    <p>Security Keys: {{ authenticators.webauthn|length }}</p>
+  {% endif %}
+{% endif %}
+```
+
+### TrustView
+
+**Source:** `allauth/mfa/base/views.py:163`
+
+Allows users to trust a browser/device to skip MFA for a period.
+
+**URL Name:** `mfa_trust`
+
+**Template:** `mfa/trust.html`
+
+**Decorators:** `@login_stage_required(stage=TrustStage.key)`
+
+**Context:**
+- `trust_from` - Current timestamp
+- `trust_until` - When trust expires
+
+```python
+# Template example
+<form method="post">
+  {% csrf_token %}
+  <p>Trust this device for {{ trust_until|timeuntil }}?</p>
+  <button type="submit" name="action" value="trust">Trust Device</button>
+  <button type="submit" name="action" value="continue">Don't Trust</button>
+</form>
+```
+
+## TOTP Views
+
+### ActivateTOTPView
+
+**Source:** `allauth/mfa/totp/views.py:24`
+
+Handles TOTP authenticator activation with QR code display.
+
+**URL Name:** `mfa_activate_totp`
+
+**Template:** `mfa/totp/activate_form.html`
+
+**Form Class:** `ActivateTOTPForm`
+
+**Decorators:**
+- `@redirect_if_add_not_allowed`
+- `@reauthentication_required`
+
+**Context:**
+- `form` - Activation form with secret field
+- `totp_svg` - SVG markup for QR code
+- `totp_svg_data_uri` - Data URI for QR code image
+- `totp_url` - Raw `otpauth://` URL
+
+**Success URL:** `mfa_view_recovery_codes` (if generated) or `mfa_index`
+
+```python
+# Template example
+<h2>Activate TOTP</h2>
+<p>Scan this QR code with your authenticator app:</p>
+<img src="{{ totp_svg_data_uri }}" alt="TOTP QR Code" />
+
+<p>Or enter this code manually: {{ form.secret }}</p>
+
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Activate</button>
+</form>
+```
+
+### DeactivateTOTPView
+
+**Source:** `allauth/mfa/totp/views.py:75`
+
+Handles TOTP authenticator deactivation.
+
+**URL Name:** `mfa_deactivate_totp`
+
+**Template:** `mfa/totp/deactivate_form.html`
+
+**Form Class:** `DeactivateTOTPForm`
+
+**Decorators:** `@login_required`, `@reauthentication_required`
+
+**Success URL:** `mfa_index`
+
+```python
+from allauth.mfa.totp.views import DeactivateTOTPView
+
+class CustomDeactivateTOTPView(DeactivateTOTPView):
+    def form_valid(self, form):
+        # Send notification email
+        self.request.user.email_user(
+            subject="TOTP Deactivated",
+            message="Your TOTP authenticator has been removed."
+        )
+        return super().form_valid(form)
+```
+
+## WebAuthn Views
+
+### AddWebAuthnView
+
+**Source:** `allauth/mfa/webauthn/views.py:31`
+
+Handles adding new WebAuthn credentials (security keys, biometrics).
+
+**URL Name:** `mfa_add_webauthn`
+
+**Template:** `mfa/webauthn/add_form.html`
+
+**Form Class:** `AddWebAuthnForm`
+
+**Decorators:**
+- `@redirect_if_add_not_allowed`
+- `@reauthentication_required`
+
+**Context:**
+- `form` - Add form
+- `js_data` - JavaScript data with `creation_options` for WebAuthn API
+
+**Success URL:** `mfa_view_recovery_codes` (if generated) or `mfa_index`
+
+```javascript
+// Frontend integration
+const { creation_options } = {{ js_data|json_script:"js-data" }};
+
+const credential = await navigator.credentials.create({
+  publicKey: creation_options
+});
+
+// Submit credential to form
+```
+
+### ListWebAuthnView
+
+**Source:** `allauth/mfa/webauthn/views.py:65`
+
+Lists all WebAuthn authenticators for the user.
+
+**URL Name:** `mfa_list_webauthn`
+
+**Template:** `mfa/webauthn/authenticator_list.html`
+
+**Decorators:** `@login_required`
+
+**Context:**
+- `authenticators` - QuerySet of WebAuthn authenticators
+
+```python
+# Template example
+{% for authenticator in authenticators %}
+  <div class="key-item">
+    <h3>{{ authenticator.wrap.name }}</h3>
+    <p>Added: {{ authenticator.created_at }}</p>
+    <p>Last used: {{ authenticator.last_used_at|default:"Never" }}</p>
+    <a href="{% url 'mfa_edit_webauthn' pk=authenticator.pk %}">Rename</a>
+    <a href="{% url 'mfa_remove_webauthn' pk=authenticator.pk %}">Remove</a>
+  </div>
+{% endfor %}
+```
+
+### EditWebAuthnView
+
+**Source:** `allauth/mfa/webauthn/views.py:163`
+
+Allows renaming WebAuthn authenticators.
+
+**URL Name:** `mfa_edit_webauthn`
+
+**Template:** `mfa/webauthn/edit_form.html`
+
+**Form Class:** `EditWebAuthnForm`
+
+**Decorators:** `@reauthentication_required`
+
+**Success URL:** `mfa_list_webauthn`
+
+### RemoveWebAuthnView
+
+**Source:** `allauth/mfa/webauthn/views.py:81`
+
+Handles WebAuthn authenticator removal.
+
+**URL Name:** `mfa_remove_webauthn`
+
+**Template:** `mfa/webauthn/authenticator_confirm_delete.html`
+
+**Decorators:** `@reauthentication_required`
+
+**Success URL:** `mfa_list_webauthn`
+
+### LoginWebAuthnView
+
+**Source:** `allauth/mfa/webauthn/views.py:103`
+
+Handles passwordless WebAuthn login.
+
+**URL Pattern:** `/accounts/webauthn/login/`
+
+**Form Class:** `LoginWebAuthnForm`
+
+**Note:** Only available if `MFA_PASSKEY_LOGIN_ENABLED = True`
+
+```python
+# AJAX endpoint for getting authentication options
+GET /accounts/webauthn/login/
+# Returns: {"request_options": {...}}
+
+# Submit credential
+POST /accounts/webauthn/login/
+# Form data: {"credential": {...}}
+```
+
+### ReauthenticateWebAuthnView
+
+**Source:** `allauth/mfa/webauthn/views.py:131`
+
+Handles re-authentication using WebAuthn.
+
+**URL Name:** `mfa_reauthenticate_webauthn`
+
+**Template:** `mfa/webauthn/reauthenticate.html`
+
+**Form Class:** `ReauthenticateWebAuthnForm`
+
+**Context:**
+- `form` - Re-authentication form
+- `js_data` - JavaScript data with `request_options`
+
+### SignupWebAuthnView
+
+**Source:** `allauth/mfa/webauthn/views.py:183`
+
+Handles WebAuthn credential creation during signup.
+
+**URL Name:** `mfa_signup_webauthn`
+
+**Template:** `mfa/webauthn/signup_form.html`
+
+**Form Class:** `SignupWebAuthnForm`
+
+**Decorators:** `@login_stage_required(stage=PasskeySignupStage.key)`
+
+**Note:** Only available if `MFA_PASSKEY_SIGNUP_ENABLED = True`
+
+## Recovery Codes Views
+
+### GenerateRecoveryCodesView
+
+**Source:** `allauth/mfa/recovery_codes/views.py:19`
+
+Generates new recovery codes (regenerates if they already exist).
+
+**URL Name:** `mfa_generate_recovery_codes`
+
+**Template:** `mfa/recovery_codes/generate.html`
+
+**Form Class:** `GenerateRecoveryCodesForm`
+
+**Decorators:** `@reauthentication_required`
+
+**Success URL:** `mfa_view_recovery_codes`
+
+**Context:**
+- `form` - Generation form
+- `unused_code_count` - Number of unused codes (before regeneration)
+
+```python
+# Template example
+<h2>Generate Recovery Codes</h2>
+{% if unused_code_count > 0 %}
+  <p class="warning">
+    You have {{ unused_code_count }} unused recovery codes.
+    Generating new codes will invalidate them.
+  </p>
+{% endif %}
+
+<form method="post">
+  {% csrf_token %}
+  <button type="submit">Generate New Codes</button>
+</form>
+```
+
+### ViewRecoveryCodesView
+
+**Source:** `allauth/mfa/recovery_codes/views.py:83`
+
+Displays recovery codes to the user.
+
+**URL Name:** `mfa_view_recovery_codes`
+
+**Template:** `mfa/recovery_codes/index.html`
+
+**Decorators:** `@login_required`
+
+**Context:**
+- `unused_codes` - List of unused recovery codes
+- `total_count` - Total number of codes
+
+```python
+# Template example
+<h2>Recovery Codes</h2>
+<p>Store these codes in a safe place. Each can only be used once.</p>
+
+<div class="recovery-codes">
+  {% for code in unused_codes %}
+    <code>{{ code }}</code>
+  {% endfor %}
+</div>
+
+<p>{{ unused_codes|length }} of {{ total_count }} codes remaining</p>
+
+<a href="{% url 'mfa_download_recovery_codes' %}" download>Download as Text</a>
+```
+
+### DownloadRecoveryCodesView
+
+**Source:** `allauth/mfa/recovery_codes/views.py:55`
+
+Provides recovery codes as a downloadable text file.
+
+**URL Name:** `mfa_download_recovery_codes`
+
+**Template:** `mfa/recovery_codes/download.txt`
+
+**Content Type:** `text/plain`
+
+**Decorators:** `@login_required`, `@never_cache`
+
+**Response Headers:**
+```python
+Content-Disposition: attachment; filename="recovery-codes.txt"
+```
+
+## View Customization Examples
+
+### Custom TOTP Activation with Email Notification
+
+```python
+from allauth.mfa.totp.views import ActivateTOTPView
+from django.core.mail import send_mail
+
+class CustomActivateTOTPView(ActivateTOTPView):
+    template_name = 'myapp/totp_activate.html'
+    
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        
+        # Send confirmation email
+        send_mail(
+            subject='TOTP Activated',
+            message='You have successfully enabled TOTP authentication.',
+            from_email='security@example.com',
+            recipient_list=[self.request.user.email],
+        )
+        
+        return response
+```
+
+### Custom WebAuthn List with Filtering
+
+```python
+from allauth.mfa.webauthn.views import ListWebAuthnView
+from django.utils import timezone
+from datetime import timedelta
+
+class CustomListWebAuthnView(ListWebAuthnView):
+    template_name = 'myapp/webauthn_list.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        
+        # Add recently used keys
+        thirty_days_ago = timezone.now() - timedelta(days=30)
+        context['recent_keys'] = context['authenticators'].filter(
+            last_used_at__gte=thirty_days_ago
+        )
+        
+        # Add unused keys
+        context['unused_keys'] = context['authenticators'].filter(
+            last_used_at__isnull=True
+        )
+        
+        return context
+```
+
+### Custom MFA Index with Analytics
+
+```python
+from allauth.mfa.base.views import IndexView
+
+class CustomIndexView(IndexView):
+    template_name = 'myapp/mfa_dashboard.html'
+    
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        
+        # Add security score
+        score = 0
+        if 'totp' in context['authenticators']:
+            score += 40
+        if 'webauthn' in context['authenticators']:
+            score += 50
+        if 'recovery_codes' in context['authenticators']:
+            score += 10
+        
+        context['security_score'] = score
+        context['is_secure'] = score >= 50
+        
+        return context
+```
+
+## URL Configuration
+
+```python
+# urls.py
+from django.urls import path, include
+
+urlpatterns = [
+    # Include all default MFA URLs
+    path('accounts/', include('allauth.mfa.urls')),
+    
+    # Or customize specific views
+    path('accounts/', include('allauth.urls')),
+    path('mfa/activate-totp/', CustomActivateTOTPView.as_view(), name='mfa_activate_totp'),
+]
+```
+
+## Form Override Configuration
+
+```python
+# settings.py
+MFA_FORMS = {
+    'activate_totp': 'myapp.forms.CustomActivateTOTPForm',
+    'authenticate': 'myapp.forms.CustomAuthenticateForm',
+    'add_webauthn': 'myapp.forms.CustomAddWebAuthnForm',
+}
+```

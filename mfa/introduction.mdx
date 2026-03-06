@@ -1,0 +1,165 @@
+---
+title: Multi-Factor Authentication
+description: Add an extra layer of security to your Django application with multi-factor authentication
+---
+
+The `allauth.mfa` app provides comprehensive multi-factor authentication (MFA) functionality for django-allauth, supporting multiple authentication methods to enhance account security.
+
+## Features
+
+django-allauth MFA includes support for:
+
+- **TOTP Authentication** - Time-based One-Time Password authentication using authenticator apps
+- **WebAuthn/FIDO2** - Hardware security keys and biometric authentication
+- **Passkey Login** - Passwordless authentication using WebAuthn
+- **Recovery Codes** - Backup codes for account recovery when primary methods are unavailable
+- **Browser Trust** - Optional "trust this browser" functionality to reduce friction
+
+## Installation
+
+Install django-allauth with MFA support:
+
+```bash
+pip install "django-allauth[mfa]"
+```
+
+<Note>
+The `[mfa]` extra installs additional dependencies required for MFA functionality, including `qrcode` for TOTP QR codes and `fido2` for WebAuthn support.
+</Note>
+
+## Configuration
+
+Add `allauth.mfa` to your `INSTALLED_APPS` in `settings.py`:
+
+```python settings.py
+INSTALLED_APPS = [
+    # ...
+    'django.contrib.auth',
+    'django.contrib.messages',
+    
+    # Required allauth apps
+    'allauth',
+    'allauth.account',
+    
+    # Enable MFA
+    'allauth.mfa',
+    # ...
+]
+```
+
+## Basic Setup
+
+The default configuration enables TOTP and recovery codes:
+
+```python settings.py
+# Default - TOTP and recovery codes enabled
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+```
+
+To enable WebAuthn support:
+
+```python settings.py
+MFA_SUPPORTED_TYPES = ["totp", "webauthn", "recovery_codes"]
+
+# Optional: Enable passkey login (passwordless authentication)
+MFA_PASSKEY_LOGIN_ENABLED = True
+```
+
+## URL Configuration
+
+Include MFA URLs in your project's `urls.py`:
+
+```python urls.py
+from django.urls import path, include
+
+urlpatterns = [
+    # ...
+    path('accounts/', include('allauth.urls')),
+    # ...
+]
+```
+
+<Note>
+MFA URLs are automatically included when you include `allauth.urls`. The URLs are available at `/accounts/mfa/`.
+</Note>
+
+## Email Verification Requirement
+
+By default, users must verify their email address before enabling MFA. This prevents attackers from locking out legitimate account owners:
+
+```python settings.py
+# Default behavior - email verification required
+MFA_ALLOW_UNVERIFIED_EMAIL = False
+
+# Allow MFA without email verification (not recommended)
+MFA_ALLOW_UNVERIFIED_EMAIL = True
+```
+
+<Warning>
+Setting `MFA_ALLOW_UNVERIFIED_EMAIL = True` allows attackers to sign up with someone else's email and enable MFA, potentially locking out the legitimate owner. Only enable this if you understand the security implications.
+</Warning>
+
+## Available MFA Types
+
+### TOTP (Time-based One-Time Password)
+
+Users can set up TOTP authentication using authenticator apps like Google Authenticator, Authy, or 1Password.
+
+[Learn more about TOTP setup →](/mfa/totp)
+
+### WebAuthn
+
+Support for FIDO2 security keys, platform authenticators (like Touch ID/Face ID), and passkeys.
+
+[Learn more about WebAuthn →](/mfa/webauthn)
+
+### Recovery Codes
+
+Backup codes that users can use if they lose access to their primary authentication method.
+
+[Learn more about recovery codes →](/mfa/recovery-codes)
+
+## User Flow
+
+When a user has MFA enabled:
+
+1. User enters their username and password
+2. User is prompted for their second factor (TOTP code, WebAuthn, or recovery code)
+3. Upon successful authentication, user gains access to their account
+
+## Development Setup
+
+For local development with WebAuthn:
+
+```python settings.py
+# Only use in development - allows localhost for WebAuthn
+MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = True
+```
+
+<Warning>
+Never set `MFA_WEBAUTHN_ALLOW_INSECURE_ORIGIN = True` in production. This setting bypasses important security checks.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card title="TOTP Setup" icon="mobile" href="/mfa/totp">
+    Configure time-based one-time passwords
+  </Card>
+  <Card title="WebAuthn" icon="key" href="/mfa/webauthn">
+    Set up hardware keys and passkeys
+  </Card>
+  <Card title="Recovery Codes" icon="shield" href="/mfa/recovery-codes">
+    Implement backup authentication codes
+  </Card>
+</CardGroup>
+
+## Database Migrations
+
+After adding `allauth.mfa` to `INSTALLED_APPS`, run migrations:
+
+```bash
+python manage.py migrate
+```
+
+This creates the `Authenticator` model which stores MFA credentials for users.

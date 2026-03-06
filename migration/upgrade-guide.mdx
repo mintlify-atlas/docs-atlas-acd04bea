@@ -1,0 +1,294 @@
+---
+title: Upgrade Guide
+description: Step-by-step guide to upgrading django-allauth to the latest version
+---
+
+## Overview
+
+This guide helps you upgrade django-allauth to newer versions safely and efficiently. Always review the [Changelog](/migration/changelog) and [Breaking Changes](/migration/breaking-changes) before upgrading.
+
+## General Upgrade Process
+
+<Steps>
+  <Step title="Review the Changelog">
+    Check the [Changelog](/migration/changelog) for all versions between your current version and the target version. Pay special attention to:
+    - Security notices
+    - Breaking changes
+    - Deprecated features
+    - New configuration requirements
+  </Step>
+  
+  <Step title="Update Dependencies">
+    Update django-allauth in your requirements file:
+    
+    <CodeGroup>
+    ```bash pip
+    pip install --upgrade django-allauth
+    ```
+    
+    ```bash Poetry
+    poetry update django-allauth
+    ```
+    
+    ```bash Pipenv
+    pipenv update django-allauth
+    ```
+    </CodeGroup>
+    
+    Check if you need to update optional dependencies:
+    ```bash
+    pip install --upgrade "django-allauth[mfa,socialaccount,saml]"
+    ```
+  </Step>
+  
+  <Step title="Run Database Migrations">
+    Apply any new database migrations:
+    
+    ```bash
+    python manage.py migrate
+    ```
+    
+    <Warning>
+    Always backup your database before running migrations in production.
+    </Warning>
+  </Step>
+  
+  <Step title="Update Configuration">
+    Review and update your settings based on the changelog:
+    - Add new required settings
+    - Update deprecated settings
+    - Review security-related configuration changes
+  </Step>
+  
+  <Step title="Test Thoroughly">
+    Test all authentication flows:
+    - Local signup and login
+    - Social authentication
+    - Password reset
+    - Email verification
+    - MFA if enabled
+    - API endpoints if using headless mode
+  </Step>
+</Steps>
+
+## Upgrading to 65.x
+
+### Security: IP Address Detection
+
+<Warning>
+Starting with version 65.14.2, `X-Forwarded-For` is distrusted by default for IP address detection.
+</Warning>
+
+You must configure IP detection based on your deployment:
+
+**Option 1: Configure Trusted Proxy Count**
+```python settings.py
+# If behind 1 proxy (e.g., nginx)
+ALLAUTH_TRUSTED_PROXY_COUNT = 1
+
+# If behind 2 proxies (e.g., load balancer + nginx)
+ALLAUTH_TRUSTED_PROXY_COUNT = 2
+```
+
+**Option 2: Use Trusted Client IP Header**
+```python settings.py
+# If your infrastructure sets a trusted header
+ALLAUTH_TRUSTED_CLIENT_IP_HEADER = "HTTP_CF_CONNECTING_IP"  # Cloudflare
+# or
+ALLAUTH_TRUSTED_CLIENT_IP_HEADER = "HTTP_X_REAL_IP"  # nginx
+```
+
+**Option 3: Custom Implementation**
+```python adapters.py
+from allauth.account.adapter import DefaultAccountAdapter
+
+class MyAccountAdapter(DefaultAccountAdapter):
+    def get_client_ip(self, request):
+        # Your custom logic
+        return request.META.get('HTTP_CF_CONNECTING_IP')
+```
+
+### Django 6.0 Support
+
+Django 6.0 is officially supported as of version 65.13.1. No configuration changes required.
+
+### Headless JWT Algorithm
+
+The JWT algorithm is now configurable (version 65.14.0):
+
+```python settings.py
+HEADLESS_TOKEN_STRATEGY = {
+    "type": "jwt",
+    "signing_key": SECRET_KEY,
+    "algorithm": "HS256",  # Now configurable, defaults to RS256
+}
+```
+
+## Upgrading to 64.x
+
+### Python Version Requirements
+
+Django Allauth 64.x requires Python 3.8 or higher. If you're on Python 3.7 or earlier:
+
+1. Upgrade Python to 3.8+
+2. Test your application thoroughly
+3. Then upgrade django-allauth
+
+### Template Changes
+
+Version 64 introduced the element-based styling system. If you have custom templates:
+
+```python settings.py
+# Enable the new system (recommended)
+ACCOUNT_FORMS = {
+    "login": "allauth.account.forms.LoginForm",
+}
+```
+
+Or continue using legacy templates:
+```python settings.py
+ACCOUNT_TEMPLATE_EXTENSION = "html"  # Instead of default "html"
+```
+
+## Version-Specific Upgrade Notes
+
+<Accordion title="65.14.x Security Updates">
+  
+  ### Rate Limiting Security
+  
+  The default behavior for IP address detection has changed. See the security section above.
+  
+  ### SAML RelayState Security
+  
+  If you use SAML with IdP-initiated SSO enabled:
+  
+  ```python settings.py
+  SOCIALACCOUNT_PROVIDERS = {
+      'saml': {
+          'APPS': [...],
+          # Ensure you validate relay states
+      }
+  }
+  ```
+  
+</Accordion>
+
+<Accordion title="64.x Breaking Changes">
+  
+  ### Template System Updates
+  
+  The element-based template system was introduced. Custom templates may need updates.
+  
+  ### Form Changes
+  
+  Some form fields and validation logic changed. Review custom forms.
+  
+</Accordion>
+
+<Accordion title="63.x to 64.x">
+  
+  ### Settings Reorganization
+  
+  Some settings were renamed or reorganized:
+  
+  ```python
+  # Old (63.x)
+  ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+  
+  # New (64.x) - still supported
+  ACCOUNT_EMAIL_VERIFICATION = "mandatory"
+  ```
+  
+  No breaking changes in settings, but new options available.
+  
+</Accordion>
+
+## Testing Your Upgrade
+
+### Automated Tests
+
+Add these tests to verify the upgrade:
+
+```python tests.py
+from django.test import TestCase
+from django.contrib.auth import get_user_model
+from allauth.account.models import EmailAddress
+
+class UpgradeTests(TestCase):
+    def test_signup_flow(self):
+        """Test basic signup still works"""
+        response = self.client.post('/accounts/signup/', {
+            'email': 'test@example.com',
+            'password1': 'testpass123',
+            'password2': 'testpass123',
+        })
+        self.assertEqual(response.status_code, 302)
+        
+    def test_login_flow(self):
+        """Test login still works"""
+        User = get_user_model()
+        user = User.objects.create_user('testuser', 'test@example.com', 'testpass123')
+        EmailAddress.objects.create(user=user, email='test@example.com', verified=True, primary=True)
+        
+        response = self.client.post('/accounts/login/', {
+            'login': 'test@example.com',
+            'password': 'testpass123',
+        })
+        self.assertEqual(response.status_code, 302)
+```
+
+### Manual Testing Checklist
+
+- [ ] Signup with email
+- [ ] Login with username/email
+- [ ] Password reset flow
+- [ ] Email verification
+- [ ] Social login (test each provider you use)
+- [ ] MFA enrollment and authentication
+- [ ] Account management (change email, change password)
+- [ ] Headless API endpoints (if applicable)
+- [ ] Rate limiting works correctly
+- [ ] Admin panel access
+
+## Rollback Plan
+
+If issues occur after upgrading:
+
+<Steps>
+  <Step title="Restore Database Backup">
+    Restore your database from the backup taken before migration
+  </Step>
+  
+  <Step title="Downgrade Package">
+    Pin to the previous version:
+    ```bash
+    pip install django-allauth==<previous-version>
+    ```
+  </Step>
+  
+  <Step title="Reverse Migrations">
+    If you applied new migrations:
+    ```bash
+    python manage.py migrate allauth <previous-migration>
+    ```
+  </Step>
+</Steps>
+
+## Getting Help
+
+If you encounter issues during upgrade:
+
+<CardGroup cols={2}>
+  <Card title="Stack Overflow" icon="stack-overflow" href="https://stackoverflow.com/questions/tagged/django-allauth">
+    Ask questions with the django-allauth tag
+  </Card>
+  <Card title="Issue Tracker" icon="bug" href="https://codeberg.org/allauth/django-allauth/issues">
+    Report bugs or unexpected behavior
+  </Card>
+  <Card title="Breaking Changes" icon="triangle-exclamation" href="/migration/breaking-changes">
+    Review detailed breaking changes
+  </Card>
+  <Card title="Changelog" icon="clock" href="/migration/changelog">
+    See all version changes
+  </Card>
+</CardGroup>
