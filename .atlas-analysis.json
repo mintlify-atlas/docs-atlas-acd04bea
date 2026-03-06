@@ -1,0 +1,175 @@
+{
+  "projectType": "framework",
+  "projectName": "Django Allauth",
+  "projectDescription": "Integrated Django framework for authentication, registration, account management, and social login",
+  "theme": "maple",
+  "primaryColor": "#14ad14",
+  "lightColor": "#145812",
+  "darkColor": "#eeeeec",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/overview",
+              "concepts/account-management",
+              "concepts/authentication-flows",
+              "concepts/email-verification",
+              "concepts/rate-limiting"
+            ]
+          },
+          {
+            "group": "Social Authentication",
+            "pages": [
+              "socialaccount/introduction",
+              "socialaccount/configuration",
+              "socialaccount/providers",
+              "socialaccount/advanced"
+            ]
+          },
+          {
+            "group": "Multi-Factor Authentication",
+            "pages": [
+              "mfa/introduction",
+              "mfa/totp",
+              "mfa/webauthn",
+              "mfa/recovery-codes"
+            ]
+          },
+          {
+            "group": "Headless API",
+            "pages": [
+              "headless/introduction",
+              "headless/installation",
+              "headless/configuration",
+              "headless/authentication",
+              "headless/cors"
+            ]
+          },
+          {
+            "group": "Identity Provider",
+            "pages": [
+              "idp/introduction",
+              "idp/openid-connect",
+              "idp/saml"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "configuration/settings",
+              "configuration/adapters",
+              "configuration/templates",
+              "configuration/forms"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/user-sessions",
+              "guides/phone-authentication",
+              "guides/custom-user-model",
+              "guides/email-customization",
+              "guides/security-best-practices"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Account",
+            "pages": [
+              "api/account/models",
+              "api/account/forms",
+              "api/account/views",
+              "api/account/signals",
+              "api/account/decorators"
+            ]
+          },
+          {
+            "group": "Social Account",
+            "pages": [
+              "api/socialaccount/models",
+              "api/socialaccount/forms",
+              "api/socialaccount/views",
+              "api/socialaccount/signals"
+            ]
+          },
+          {
+            "group": "MFA",
+            "pages": [
+              "api/mfa/models",
+              "api/mfa/adapters",
+              "api/mfa/views"
+            ]
+          },
+          {
+            "group": "Headless",
+            "pages": [
+              "api/headless/endpoints",
+              "api/headless/tokens",
+              "api/headless/adapters"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Migration",
+        "groups": [
+          {
+            "group": "Release Notes",
+            "pages": [
+              "migration/changelog",
+              "migration/upgrade-guide",
+              "migration/breaking-changes"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Local and social authentication",
+    "Multi-factor authentication (TOTP, WebAuthn, passkeys)",
+    "Headless REST API for SPAs and mobile apps",
+    "OpenID Connect and SAML identity provider",
+    "100+ social authentication providers",
+    "Built-in rate limiting and account enumeration prevention",
+    "Email and phone verification",
+    "Customizable adapters and flows",
+    "Session management and security"
+  ],
+  "publicApiSurface": [
+    "allauth.account.adapter.DefaultAccountAdapter",
+    "allauth.account.signals.user_signed_up",
+    "allauth.account.signals.user_logged_in",
+    "allauth.account.signals.email_confirmed",
+    "allauth.account.forms.SignupForm",
+    "allauth.account.forms.LoginForm",
+    "allauth.account.views.SignupView",
+    "allauth.account.views.LoginView",
+    "allauth.socialaccount.adapter.DefaultSocialAccountAdapter",
+    "allauth.socialaccount.signals.pre_social_login",
+    "allauth.socialaccount.models.SocialAccount",
+    "allauth.socialaccount.providers",
+    "allauth.mfa.adapter.DefaultMFAAdapter",
+    "allauth.mfa.totp",
+    "allauth.mfa.webauthn",
+    "allauth.headless.urls",
+    "allauth.headless.tokens",
+    "allauth.idp.oidc"
+  ]
+}
